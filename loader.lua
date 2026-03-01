@@ -1,11 +1,8 @@
 -- DevN.gg GUI Library
 -- loader.lua
--- Load with:
--- local DevNgg = loadstring(game:HttpGet('https://raw.githubusercontent.com/nh1cScript-gg/DevN.gg/main/loader.lua'))()
 
 local DevNgg = {}
 
--- Services
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
@@ -13,13 +10,10 @@ local HttpService = game:GetService("HttpService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- Config storage
 local flags = {}
 local toggleSetters = {}
 local saveFolder = "DevNgg"
 local saveFile = "config"
-
--- // Save & Load
 
 local function getSavePath()
     return saveFolder .. "/" .. saveFile .. ".json"
@@ -29,9 +23,7 @@ local function saveConfig()
     pcall(function()
         if not isfolder(saveFolder) then makefolder(saveFolder) end
         local data = {}
-        for flag, val in pairs(flags) do
-            data[flag] = val
-        end
+        for flag, val in pairs(flags) do data[flag] = val end
         writefile(getSavePath(), HttpService:JSONEncode(data))
     end)
 end
@@ -45,8 +37,6 @@ local function loadConfig()
     end)
     return (ok and result) or {}
 end
-
--- // Visibility
 
 local mainFrame = nil
 local guiVisible = true
@@ -64,7 +54,7 @@ function DevNgg:Destroy()
     if mainFrame then mainFrame.Parent:Destroy() end
 end
 
--- // Notifications (Rayfield style - right side stacked)
+-- // Notifications (Rayfield style - bottom right, stacked)
 
 local notifGui = Instance.new("ScreenGui")
 notifGui.Name = "DevNggNotif"
@@ -90,11 +80,10 @@ notifPadding.PaddingBottom = UDim.new(0, 16)
 notifPadding.PaddingRight = UDim.new(0, 8)
 
 function DevNgg:Notify(config)
-    local title   = config.Title or "DevN.gg"
-    local content = config.Content or ""
+    local title    = config.Title or "DevN.gg"
+    local content  = config.Content or ""
     local duration = config.Duration or 3
 
-    -- Notif card
     local card = Instance.new("Frame")
     card.Size = UDim2.new(1, 0, 0, 64)
     card.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
@@ -109,14 +98,14 @@ function DevNgg:Notify(config)
     cardStroke.Thickness = 1
     cardStroke.Transparency = 1
 
-    -- Accent bar on left
+    -- Grey transparent accent bar on left
     local accent = Instance.new("Frame", card)
     accent.Size = UDim2.new(0, 3, 1, 0)
-    accent.BackgroundColor3 = Color3.fromRGB(75, 195, 115)
+    accent.BackgroundColor3 = Color3.fromRGB(90, 90, 90)
+    accent.BackgroundTransparency = 0.4
     accent.BorderSizePixel = 0
     Instance.new("UICorner", accent).CornerRadius = UDim.new(0, 4)
 
-    -- Title
     local titleLbl = Instance.new("TextLabel", card)
     titleLbl.Size = UDim2.new(1, -24, 0, 22)
     titleLbl.Position = UDim2.new(0, 14, 0, 8)
@@ -127,7 +116,6 @@ function DevNgg:Notify(config)
     titleLbl.Font = Enum.Font.GothamBold
     titleLbl.TextXAlignment = Enum.TextXAlignment.Left
 
-    -- Content
     local contentLbl = Instance.new("TextLabel", card)
     contentLbl.Size = UDim2.new(1, -24, 0, 26)
     contentLbl.Position = UDim2.new(0, 14, 0, 30)
@@ -139,7 +127,7 @@ function DevNgg:Notify(config)
     contentLbl.TextXAlignment = Enum.TextXAlignment.Left
     contentLbl.TextWrapped = true
 
-    -- Progress bar at bottom
+    -- Progress bar
     local progressBg = Instance.new("Frame", card)
     progressBg.Size = UDim2.new(1, 0, 0, 2)
     progressBg.Position = UDim2.new(0, 0, 1, -2)
@@ -148,31 +136,21 @@ function DevNgg:Notify(config)
 
     local progressBar = Instance.new("Frame", progressBg)
     progressBar.Size = UDim2.new(1, 0, 1, 0)
-    progressBar.BackgroundColor3 = Color3.fromRGB(75, 195, 115)
+    progressBar.BackgroundColor3 = Color3.fromRGB(90, 90, 90)
     progressBar.BorderSizePixel = 0
 
-    -- Slide in from right
-    card.Position = UDim2.new(0, 320, 0, 0)
-    TweenService:Create(card, TweenInfo.new(0.3, Enum.EasingStyle.Quint), {
-        BackgroundTransparency = 0
-    }):Play()
-    TweenService:Create(cardStroke, TweenInfo.new(0.3), {
-        Transparency = 0
-    }):Play()
+    -- Fade in
+    TweenService:Create(card, TweenInfo.new(0.3, Enum.EasingStyle.Quint), { BackgroundTransparency = 0 }):Play()
+    TweenService:Create(cardStroke, TweenInfo.new(0.3), { Transparency = 0 }):Play()
 
-    -- Progress bar drain
+    -- Progress drain
     TweenService:Create(progressBar, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
         Size = UDim2.new(0, 0, 1, 0)
     }):Play()
 
     task.delay(duration, function()
-        -- Fade out
-        TweenService:Create(card, TweenInfo.new(0.3), {
-            BackgroundTransparency = 1
-        }):Play()
-        TweenService:Create(cardStroke, TweenInfo.new(0.3), {
-            Transparency = 1
-        }):Play()
+        TweenService:Create(card, TweenInfo.new(0.3), { BackgroundTransparency = 1 }):Play()
+        TweenService:Create(cardStroke, TweenInfo.new(0.3), { Transparency = 1 }):Play()
         TweenService:Create(titleLbl, TweenInfo.new(0.3), { TextTransparency = 1 }):Play()
         TweenService:Create(contentLbl, TweenInfo.new(0.3), { TextTransparency = 1 }):Play()
         TweenService:Create(accent, TweenInfo.new(0.3), { BackgroundTransparency = 1 }):Play()
@@ -194,14 +172,12 @@ function DevNgg:CreateWindow(config)
         saveFile   = config.ConfigurationSaving.FileName   or saveFile
     end
 
-    -- Screen GUI
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "DevNggGUI"
     screenGui.ResetOnSpawn = false
     screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     screenGui.Parent = playerGui
 
-    -- Main frame — bigger size
     local main = Instance.new("Frame")
     main.Name = "Main"
     main.Size = UDim2.new(0, 320, 0, 70)
@@ -214,7 +190,6 @@ function DevNgg:CreateWindow(config)
     Instance.new("UIStroke", main).Color = Color3.fromRGB(48, 48, 48)
     mainFrame = main
 
-    -- Header
     local header = Instance.new("Frame")
     header.Size = UDim2.new(1, 0, 0, 64)
     header.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
@@ -229,7 +204,6 @@ function DevNgg:CreateWindow(config)
     headerFix.BorderSizePixel = 0
     headerFix.Parent = header
 
-    -- Title
     local titleLabel = Instance.new("TextLabel")
     titleLabel.Size = UDim2.new(1, -80, 0, 24)
     titleLabel.Position = UDim2.new(0, 14, 0, 10)
@@ -241,7 +215,6 @@ function DevNgg:CreateWindow(config)
     titleLabel.TextXAlignment = Enum.TextXAlignment.Left
     titleLabel.Parent = header
 
-    -- Subtitle + version
     local subLabel = Instance.new("TextLabel")
     subLabel.Size = UDim2.new(1, -80, 0, 18)
     subLabel.Position = UDim2.new(0, 14, 0, 36)
@@ -253,7 +226,6 @@ function DevNgg:CreateWindow(config)
     subLabel.TextXAlignment = Enum.TextXAlignment.Left
     subLabel.Parent = header
 
-    -- Minimize button
     local minimized = false
     local minBtn = Instance.new("TextButton")
     minBtn.Size = UDim2.new(0, 28, 0, 28)
@@ -268,7 +240,6 @@ function DevNgg:CreateWindow(config)
     minBtn.Parent = header
     Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 6)
 
-    -- Close button
     local closeBtn = Instance.new("TextButton")
     closeBtn.Size = UDim2.new(0, 28, 0, 28)
     closeBtn.Position = UDim2.new(1, -32, 0, 18)
@@ -286,7 +257,6 @@ function DevNgg:CreateWindow(config)
         DevNgg:SetVisibility(false)
     end)
 
-    -- Content
     local content = Instance.new("Frame")
     content.Name = "Content"
     content.Size = UDim2.new(1, 0, 1, -72)
@@ -305,17 +275,13 @@ function DevNgg:CreateWindow(config)
     contentPadding.PaddingLeft = UDim.new(0, 14)
     contentPadding.PaddingRight = UDim.new(0, 14)
 
-    -- Auto resize window height
     local function updateSize()
         if minimized then return end
         local h = 72 + listLayout.AbsoluteContentSize.Y + 22
-        TweenService:Create(main, TweenInfo.new(0.18), {
-            Size = UDim2.new(0, 320, 0, h)
-        }):Play()
+        TweenService:Create(main, TweenInfo.new(0.18), { Size = UDim2.new(0, 320, 0, h) }):Play()
     end
     listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateSize)
 
-    -- Minimize logic
     minBtn.MouseButton1Click:Connect(function()
         minimized = not minimized
         content.Visible = not minimized
@@ -327,16 +293,12 @@ function DevNgg:CreateWindow(config)
         minBtn.Text = minimized and "+" or "−"
     end)
 
-    -- Keybind toggle
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         local key = typeof(toggleKey) == "string" and Enum.KeyCode[toggleKey] or toggleKey
-        if input.KeyCode == key then
-            DevNgg:SetVisibility(not guiVisible)
-        end
+        if input.KeyCode == key then DevNgg:SetVisibility(not guiVisible) end
     end)
 
-    -- Drag
     local dragging, dragStart, startPos
     header.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -360,7 +322,6 @@ function DevNgg:CreateWindow(config)
         end
     end)
 
-    -- Window object
     local Window = {}
 
     function Window:CreateTab(name, icon)
@@ -394,9 +355,7 @@ function DevNgg:CreateWindow(config)
             lbl.Parent = content
 
             local Section = {}
-            function Section:Set(newName)
-                lbl.Text = newName:upper()
-            end
+            function Section:Set(newName) lbl.Text = newName:upper() end
             return Section
         end
 
@@ -408,9 +367,7 @@ function DevNgg:CreateWindow(config)
             div.Parent = content
 
             local Divider = {}
-            function Divider:Set(visible)
-                div.Visible = visible
-            end
+            function Divider:Set(visible) div.Visible = visible end
             return Divider
         end
 
@@ -467,9 +424,7 @@ function DevNgg:CreateWindow(config)
                     Position = val and UDim2.new(0, 21, 0.5, -8) or UDim2.new(0, 3, 0.5, -8),
                     BackgroundColor3 = val and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(100, 100, 100)
                 }):Play()
-                if not silent and config.Callback then
-                    config.Callback(val)
-                end
+                if not silent and config.Callback then config.Callback(val) end
             end
 
             if enabled then setState(true, true) end
