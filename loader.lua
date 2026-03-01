@@ -1,11 +1,11 @@
 -- DevN.gg GUI Library
 -- loader.lua
-local DevNgg = loadstring(game:HttpGet('https://raw.githubusercontent.com/nh1cScript-gg/DevNgg/main/loader.lua'))()
 
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
+
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
@@ -37,6 +37,18 @@ local function loadConfig()
     return (ok and result) or {}
 end
 
+-- Safely parent a ScreenGui: PlayerGui first, CoreGui as fallback
+local function safeParent(gui)
+    local ok = pcall(function()
+        gui.Parent = playerGui
+    end)
+    if not ok or not gui.Parent then
+        pcall(function()
+            gui.Parent = game:GetService("CoreGui")
+        end)
+    end
+end
+
 local mainFrame = nil
 local guiVisible = true
 
@@ -55,13 +67,14 @@ function DevNgg:Destroy()
     if mainFrame then mainFrame.Parent:Destroy() end
 end
 
--- // Notifications (Rayfield style - bottom right, stacked)
+-- // Notifications
 
 local notifGui = Instance.new("ScreenGui")
 notifGui.Name = "DevNggNotif"
 notifGui.ResetOnSpawn = false
 notifGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-notifGui.Parent = playerGui
+pcall(function() notifGui.DisplayOrder = 998 end)
+safeParent(notifGui)
 
 local notifContainer = Instance.new("Frame")
 notifContainer.Name = "NotifContainer"
@@ -173,7 +186,8 @@ function DevNgg:CreateWindow(config)
     screenGui.Name = "DevNggGUI"
     screenGui.ResetOnSpawn = false
     screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    screenGui.Parent = playerGui
+    pcall(function() screenGui.DisplayOrder = 999 end)
+    safeParent(screenGui)
 
     local main = Instance.new("Frame")
     main.Name = "Main"
@@ -224,6 +238,7 @@ function DevNgg:CreateWindow(config)
     subLabel.Parent = header
 
     local minimized = false
+
     local minBtn = Instance.new("TextButton")
     minBtn.Size = UDim2.new(0, 28, 0, 28)
     minBtn.Position = UDim2.new(1, -64, 0, 18)
@@ -292,10 +307,15 @@ function DevNgg:CreateWindow(config)
 
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
-        local key = typeof(toggleKey) == "string" and Enum.KeyCode[toggleKey] or toggleKey
-        if input.KeyCode == key then DevNgg:SetVisibility(not guiVisible) end
+        pcall(function()
+            local key = typeof(toggleKey) == "string" and Enum.KeyCode[toggleKey] or toggleKey
+            if input.KeyCode == key then
+                DevNgg:SetVisibility(not guiVisible)
+            end
+        end)
     end)
 
+    -- Dragging
     local dragging, dragStart, startPos
     header.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -368,9 +388,9 @@ function DevNgg:CreateWindow(config)
             return Divider
         end
 
-        function Tab:CreateToggle(config)
-            local flag = config.Flag
-            local currentValue = config.CurrentValue or false
+        function Tab:CreateToggle(cfg)
+            local flag = cfg.Flag
+            local currentValue = cfg.CurrentValue or false
 
             local btn = Instance.new("TextButton")
             btn.Size = UDim2.new(1, 0, 0, 44)
@@ -386,7 +406,7 @@ function DevNgg:CreateWindow(config)
             label.Size = UDim2.new(1, -60, 1, 0)
             label.Position = UDim2.new(0, 14, 0, 0)
             label.BackgroundTransparency = 1
-            label.Text = config.Name or "Toggle"
+            label.Text = cfg.Name or "Toggle"
             label.TextColor3 = Color3.fromRGB(190, 190, 190)
             label.TextSize = 13
             label.Font = Enum.Font.Gotham
@@ -421,7 +441,7 @@ function DevNgg:CreateWindow(config)
                     Position = val and UDim2.new(0, 21, 0.5, -8) or UDim2.new(0, 3, 0.5, -8),
                     BackgroundColor3 = val and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(100, 100, 100)
                 }):Play()
-                if not silent and config.Callback then config.Callback(val) end
+                if not silent and cfg.Callback then cfg.Callback(val) end
             end
 
             if enabled then setState(true, true) end
@@ -436,12 +456,12 @@ function DevNgg:CreateWindow(config)
             end)
         end
 
-        function Tab:CreateButton(config)
+        function Tab:CreateButton(cfg)
             local btn = Instance.new("TextButton")
             btn.Size = UDim2.new(1, 0, 0, 44)
             btn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
             btn.BorderSizePixel = 0
-            btn.Text = config.Name or "Button"
+            btn.Text = cfg.Name or "Button"
             btn.TextColor3 = Color3.fromRGB(190, 190, 190)
             btn.TextSize = 13
             btn.Font = Enum.Font.Gotham
@@ -455,7 +475,7 @@ function DevNgg:CreateWindow(config)
                 task.delay(0.12, function()
                     TweenService:Create(btn, TweenInfo.new(0.1), { BackgroundColor3 = Color3.fromRGB(25, 25, 25) }):Play()
                 end)
-                if config.Callback then config.Callback() end
+                if cfg.Callback then cfg.Callback() end
             end)
 
             btn.MouseEnter:Connect(function()
