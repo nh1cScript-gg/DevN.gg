@@ -236,7 +236,7 @@ function DevNgg:CreateWindow(config)
     main.Position = UDim2.new(0.5, -210, 0, 22)
     main.BackgroundColor3 = C.BG
     main.BorderSizePixel = 0
-    main.ClipsDescendants = true
+    main.ClipsDescendants = false
     mkCorner(main, 10)
     mkStroke(main, C.BORDER, 1)
     mainFrame = main
@@ -280,7 +280,7 @@ function DevNgg:CreateWindow(config)
         b.Font = Enum.Font.GothamBold
         b.BorderSizePixel = 0
         b.AutoButtonColor = false
-        b.ZIndex = 5
+        b.ZIndex = 10
         mkCorner(b, 6)
         mkStroke(b, C.BORDER, 1)
         b.MouseEnter:Connect(function()
@@ -307,8 +307,17 @@ function DevNgg:CreateWindow(config)
     sep.BorderSizePixel = 0
     sep.Visible = false
 
+    -- Clip wrapper so content clips but buttons don't get cut
+    local clipFrame = Instance.new("Frame", main)
+    clipFrame.Name = "ClipFrame"
+    clipFrame.Size = UDim2.new(1, 0, 1, 0)
+    clipFrame.Position = UDim2.new(0, 0, 0, 0)
+    clipFrame.BackgroundTransparency = 1
+    clipFrame.ClipsDescendants = true
+    clipFrame.ZIndex = 1
+
     -- Content
-    local content = Instance.new("Frame", main)
+    local content = Instance.new("Frame", clipFrame)
     content.Name = "Content"
     content.Size = UDim2.new(1, 0, 1, -84)
     content.Position = UDim2.new(0, 0, 0, 84)
@@ -330,7 +339,8 @@ function DevNgg:CreateWindow(config)
     local function updateSize()
         if minimized then return end
         local h = 84 + listLayout.AbsoluteContentSize.Y + 18
-        tw(main, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Size = UDim2.new(0, 420, 0, h) })
+        tw(main,      TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Size = UDim2.new(0, 420, 0, h) })
+        tw(clipFrame, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Size = UDim2.new(0, 420, 0, h) })
     end
     listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateSize)
 
@@ -338,11 +348,11 @@ function DevNgg:CreateWindow(config)
         minimized = not minimized
         content.Visible = not minimized
         sep.Visible = not minimized
-        tw(main, TweenInfo.new(0.18, Enum.EasingStyle.Quint), {
-            Size = minimized
-                and UDim2.new(0, 420, 0, 76)
-                or  UDim2.new(0, 420, 0, 84 + listLayout.AbsoluteContentSize.Y + 18)
-        })
+        local targetH = minimized
+            and 76
+            or  (84 + listLayout.AbsoluteContentSize.Y + 18)
+        tw(main, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Size = UDim2.new(0, 420, 0, targetH) })
+        tw(clipFrame, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Size = UDim2.new(0, 420, 0, targetH) })
         minBtn.Text = minimized and "+" or "−"
     end)
 
