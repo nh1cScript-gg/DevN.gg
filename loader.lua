@@ -252,7 +252,7 @@ function DevNgg:CreateWindow(config)
     local dot = Instance.new("Frame", header)
     dot.Size = UDim2.new(0, 5, 0, 5)
     dot.Position = UDim2.new(0, 14, 0.5, -2)
-    dot.BackgroundColor3 = C.ACCENT_D
+    dot.BackgroundColor3 = C.ACCENT
     dot.BorderSizePixel = 0
     mkCorner(dot, 3)
 
@@ -271,9 +271,9 @@ function DevNgg:CreateWindow(config)
     subLbl.Position = UDim2.new(0, 26, 0, 38)
     subLbl.BackgroundTransparency = 1
     subLbl.Text = windowSub .. "  ·  " .. windowVer
-    subLbl.TextColor3 = C.TEXT_MID
-    subLbl.TextSize = 10
-    subLbl.Font = Enum.Font.Gotham
+    subLbl.TextColor3 = C.TEXT
+    subLbl.TextSize = 11
+    subLbl.Font = Enum.Font.GothamSemibold
     subLbl.TextXAlignment = Enum.TextXAlignment.Left
 
     -- Control buttons
