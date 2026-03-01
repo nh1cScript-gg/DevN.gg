@@ -291,8 +291,8 @@ function DevNgg:CreateWindow(config)
         return b
     end
 
-    local closeBtn = mkBtn(-14, "×")
-    local minBtn   = mkBtn(-48, "−")
+    local closeBtn = mkBtn(-44, "×")
+    local minBtn   = mkBtn(-78, "−")
 
     closeBtn.MouseButton1Click:Connect(function()
         DevNgg:SetVisibility(false)
