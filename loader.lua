@@ -530,6 +530,55 @@ function DevNgg:CreateWindow(config)
             end)
         end
 
+        function Tab:CreateTextInput(cfg)
+            local wrapper = Instance.new("Frame", content)
+            wrapper.Size = UDim2.new(1, 0, 0, 58)
+            wrapper.BackgroundTransparency = 1
+            wrapper.BorderSizePixel = 0
+
+            local lbl = Instance.new("TextLabel", wrapper)
+            lbl.Size = UDim2.new(1, 0, 0, 16)
+            lbl.Position = UDim2.new(0, 2, 0, 0)
+            lbl.BackgroundTransparency = 1
+            lbl.Text = cfg.Name or "Input"
+            lbl.TextColor3 = C.TEXT_MID
+            lbl.TextSize = 11
+            lbl.Font = Enum.Font.GothamBold
+            lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+            local box = Instance.new("TextBox", wrapper)
+            box.Size = UDim2.new(1, 0, 0, 36)
+            box.Position = UDim2.new(0, 0, 0, 18)
+            box.BackgroundColor3 = C.SURFACE
+            box.BorderSizePixel = 0
+            box.Text = cfg.Default or ""
+            box.PlaceholderText = cfg.Placeholder or "Type here..."
+            box.TextColor3 = C.TEXT
+            box.PlaceholderColor3 = C.TEXT_DIM
+            box.TextSize = 13
+            box.Font = Enum.Font.Gotham
+            box.ClearTextOnFocus = false
+            mkCorner(box, 7)
+            local bs = mkStroke(box, C.BORDER, 1)
+
+            local pad = Instance.new("UIPadding", box)
+            pad.PaddingLeft = UDim.new(0, 10)
+            pad.PaddingRight = UDim.new(0, 10)
+
+            box.Focused:Connect(function()
+                tw(bs, FAST, { Color = C.BORDER2 })
+            end)
+            box.FocusLost:Connect(function()
+                tw(bs, FAST, { Color = C.BORDER })
+                if cfg.Callback then cfg.Callback(box.Text) end
+            end)
+
+            local Input = {}
+            function Input:GetValue() return box.Text end
+            function Input:SetValue(v) box.Text = v end
+            return Input
+        end
+
         return Tab
     end
 
