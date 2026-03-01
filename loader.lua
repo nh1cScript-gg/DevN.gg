@@ -232,8 +232,8 @@ function DevNgg:CreateWindow(config)
     -- Main frame
     local main = Instance.new("Frame", screenGui)
     main.Name = "Main"
-    main.Size = UDim2.new(0, 420, 0, 82)
-    main.Position = UDim2.new(0.5, -210, 0, 22)
+    main.Size = UDim2.new(0, 530, 0, 82)
+    main.Position = UDim2.new(0.5, -265, 0, 22)
     main.BackgroundColor3 = C.BG
     main.BorderSizePixel = 0
     main.ClipsDescendants = false
@@ -249,7 +249,7 @@ function DevNgg:CreateWindow(config)
     header.ZIndex = 2
 
     local titleLbl = Instance.new("TextLabel", header)
-    titleLbl.Size = UDim2.new(1, -110, 0, 26)
+    titleLbl.Size = UDim2.new(1, -120, 0, 26)
     titleLbl.Position = UDim2.new(0, 16, 0, 12)
     titleLbl.BackgroundTransparency = 1
     titleLbl.Text = windowTitle
@@ -259,7 +259,7 @@ function DevNgg:CreateWindow(config)
     titleLbl.TextXAlignment = Enum.TextXAlignment.Left
 
     local subLbl = Instance.new("TextLabel", header)
-    subLbl.Size = UDim2.new(1, -110, 0, 18)
+    subLbl.Size = UDim2.new(1, -120, 0, 18)
     subLbl.Position = UDim2.new(0, 16, 0, 42)
     subLbl.BackgroundTransparency = 1
     subLbl.Text = windowSub .. "  ·  " .. windowVer
@@ -292,8 +292,8 @@ function DevNgg:CreateWindow(config)
         return b
     end
 
-    local closeBtn = mkBtn(378, "×")
-    local minBtn   = mkBtn(344, "−")
+    local closeBtn = mkBtn(488, "×")
+    local minBtn   = mkBtn(454, "−")
 
     closeBtn.MouseButton1Click:Connect(function()
         DevNgg:SetVisibility(false)
@@ -339,8 +339,8 @@ function DevNgg:CreateWindow(config)
     local function updateSize()
         if minimized then return end
         local h = 84 + listLayout.AbsoluteContentSize.Y + 18
-        tw(main,      TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Size = UDim2.new(0, 420, 0, h) })
-        tw(clipFrame, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Size = UDim2.new(0, 420, 0, h) })
+        tw(main,      TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Size = UDim2.new(0, 530, 0, h) })
+        tw(clipFrame, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Size = UDim2.new(0, 530, 0, h) })
     end
     listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateSize)
 
@@ -351,8 +351,8 @@ function DevNgg:CreateWindow(config)
         local targetH = minimized
             and 76
             or  (84 + listLayout.AbsoluteContentSize.Y + 18)
-        tw(main, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Size = UDim2.new(0, 420, 0, targetH) })
-        tw(clipFrame, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Size = UDim2.new(0, 420, 0, targetH) })
+        tw(main, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Size = UDim2.new(0, 530, 0, targetH) })
+        tw(clipFrame, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Size = UDim2.new(0, 530, 0, targetH) })
         minBtn.Text = minimized and "+" or "−"
     end)
 
