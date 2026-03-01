@@ -743,7 +743,7 @@ function DevNgg:CreateWindow(config)
 
     function Window:SetToggle(flag, value)
         local setter = toggleSetters[flag]
-        if setter then setter(value, false) end
+        if setter then setter(value, false) end -- false = NOT silent, fires callback
     end
 
     function Window:LoadConfiguration()
@@ -753,13 +753,6 @@ function DevNgg:CreateWindow(config)
             if setter and type(val) == "boolean" then
                 setter(val, false)
             end
-        end
-    end
-
-    function Window:SetToggle(flag, val, silent)
-        local setter = toggleSetters[flag]
-        if setter then
-            setter(val, silent)
         end
     end
 
