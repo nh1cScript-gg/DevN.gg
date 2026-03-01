@@ -232,8 +232,8 @@ function DevNgg:CreateWindow(config)
     -- Main frame
     local main = Instance.new("Frame", screenGui)
     main.Name = "Main"
-    main.Size = UDim2.new(0, 292, 0, 56)
-    main.Position = UDim2.new(0.5, -146, 0, 22)
+    main.Size = UDim2.new(0, 360, 0, 68)
+    main.Position = UDim2.new(0.5, -180, 0, 22)
     main.BackgroundColor3 = C.BG
     main.BorderSizePixel = 0
     main.ClipsDescendants = true
@@ -243,36 +243,36 @@ function DevNgg:CreateWindow(config)
 
     -- Header
     local header = Instance.new("Frame", main)
-    header.Size = UDim2.new(1, 0, 0, 52)
+    header.Size = UDim2.new(1, 0, 0, 64)
     header.BackgroundTransparency = 1
     header.BorderSizePixel = 0
     header.ZIndex = 2
 
     -- Dot indicator (decorative, left edge)
     local dot = Instance.new("Frame", header)
-    dot.Size = UDim2.new(0, 4, 0, 4)
-    dot.Position = UDim2.new(0, 12, 0.5, -2)
+    dot.Size = UDim2.new(0, 5, 0, 5)
+    dot.Position = UDim2.new(0, 14, 0.5, -2)
     dot.BackgroundColor3 = C.ACCENT_D
     dot.BorderSizePixel = 0
-    mkCorner(dot, 2)
+    mkCorner(dot, 3)
 
     local titleLbl = Instance.new("TextLabel", header)
-    titleLbl.Size = UDim2.new(1, -90, 0, 18)
-    titleLbl.Position = UDim2.new(0, 22, 0, 10)
+    titleLbl.Size = UDim2.new(1, -100, 0, 22)
+    titleLbl.Position = UDim2.new(0, 26, 0, 12)
     titleLbl.BackgroundTransparency = 1
     titleLbl.Text = windowTitle
-    titleLbl.TextColor3 = C.TEXT
-    titleLbl.TextSize = 12
+    titleLbl.TextColor3 = C.ACCENT
+    titleLbl.TextSize = 16
     titleLbl.Font = Enum.Font.GothamBold
     titleLbl.TextXAlignment = Enum.TextXAlignment.Left
 
     local subLbl = Instance.new("TextLabel", header)
-    subLbl.Size = UDim2.new(1, -90, 0, 12)
-    subLbl.Position = UDim2.new(0, 22, 0, 30)
+    subLbl.Size = UDim2.new(1, -100, 0, 14)
+    subLbl.Position = UDim2.new(0, 26, 0, 38)
     subLbl.BackgroundTransparency = 1
     subLbl.Text = windowSub .. "  ·  " .. windowVer
-    subLbl.TextColor3 = C.TEXT_DIM
-    subLbl.TextSize = 9
+    subLbl.TextColor3 = C.TEXT_MID
+    subLbl.TextSize = 10
     subLbl.Font = Enum.Font.Gotham
     subLbl.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -299,8 +299,8 @@ function DevNgg:CreateWindow(config)
         return b
     end
 
-    local closeBtn = mkBtn(-10, "×")
-    local minBtn   = mkBtn(-34, "−")
+    local closeBtn = mkBtn(-12, "×")
+    local minBtn   = mkBtn(-38, "−")
 
     closeBtn.MouseButton1Click:Connect(function()
         DevNgg:SetVisibility(false)
@@ -309,7 +309,7 @@ function DevNgg:CreateWindow(config)
     -- Separator
     local sep = Instance.new("Frame", main)
     sep.Size = UDim2.new(1, -24, 0, 1)
-    sep.Position = UDim2.new(0, 12, 0, 52)
+    sep.Position = UDim2.new(0, 12, 0, 64)
     sep.BackgroundColor3 = C.BORDER
     sep.BorderSizePixel = 0
     sep.Visible = false
@@ -317,8 +317,8 @@ function DevNgg:CreateWindow(config)
     -- Content
     local content = Instance.new("Frame", main)
     content.Name = "Content"
-    content.Size = UDim2.new(1, 0, 1, -60)
-    content.Position = UDim2.new(0, 0, 0, 60)
+    content.Size = UDim2.new(1, 0, 1, -72)
+    content.Position = UDim2.new(0, 0, 0, 72)
     content.BackgroundTransparency = 1
 
     local listLayout = Instance.new("UIListLayout", content)
@@ -336,8 +336,8 @@ function DevNgg:CreateWindow(config)
 
     local function updateSize()
         if minimized then return end
-        local h = 60 + listLayout.AbsoluteContentSize.Y + 18
-        tw(main, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Size = UDim2.new(0, 292, 0, h) })
+        local h = 72 + listLayout.AbsoluteContentSize.Y + 18
+        tw(main, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Size = UDim2.new(0, 360, 0, h) })
     end
     listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateSize)
 
@@ -347,8 +347,8 @@ function DevNgg:CreateWindow(config)
         sep.Visible = not minimized
         tw(main, TweenInfo.new(0.18, Enum.EasingStyle.Quint), {
             Size = minimized
-                and UDim2.new(0, 292, 0, 52)
-                or  UDim2.new(0, 292, 0, 60 + listLayout.AbsoluteContentSize.Y + 18)
+                and UDim2.new(0, 360, 0, 64)
+                or  UDim2.new(0, 360, 0, 72 + listLayout.AbsoluteContentSize.Y + 18)
         })
         minBtn.Text = minimized and "+" or "−"
     end)
