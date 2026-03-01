@@ -1,5 +1,5 @@
 -- DevN.gg GUI Library
--- loader.lua — Ocean Redesign with Tabs
+-- loader.lua — Ocean Theme + Top Tab Bar
 
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -61,17 +61,15 @@ local C = {
     ON        = Color3.fromRGB(80, 255, 210),
     ON_PILL   = Color3.fromRGB(8, 50, 70),
     OFF_PILL  = Color3.fromRGB(8, 22, 35),
-    BTN       = Color3.fromRGB(10, 25, 40),
     BTN_HOV   = Color3.fromRGB(15, 42, 65),
     BTN_ACT   = Color3.fromRGB(22, 60, 90),
-    TAB_SEL   = Color3.fromRGB(15, 42, 65),
-    TAB_UNSEL = Color3.fromRGB(8, 20, 33),
+    TAB_SEL   = Color3.fromRGB(10, 25, 40),
+    TAB_UNSEL = Color3.fromRGB(6, 15, 25),
     TOPBAR    = Color3.fromRGB(8, 20, 33),
 }
 
 local FAST = TweenInfo.new(0.12, Enum.EasingStyle.Quint)
 local MED  = TweenInfo.new(0.20, Enum.EasingStyle.Quint)
-local SLOW = TweenInfo.new(0.30, Enum.EasingStyle.Quint)
 
 local function tw(obj, info, props) TweenService:Create(obj, info, props):Play() end
 
@@ -87,13 +85,6 @@ local function mkStroke(p, col, th, tr)
     s.Thickness = th or 1
     s.Transparency = tr or 0
     return s
-end
-
-local function mkGradient(p, c0, c1, rot)
-    local g = Instance.new("UIGradient", p)
-    g.Color = ColorSequence.new(c0, c1)
-    g.Rotation = rot or 90
-    return g
 end
 
 local mainFrame = nil
@@ -148,7 +139,6 @@ function DevNgg:Notify(cfg)
     mkCorner(card, 10)
     local cs = mkStroke(card, C.BORDER, 1, 1)
 
-    -- Accent left bar
     local bar = Instance.new("Frame", card)
     bar.Size = UDim2.new(0, 3, 1, -16)
     bar.Position = UDim2.new(0, 0, 0, 8)
@@ -157,11 +147,10 @@ function DevNgg:Notify(cfg)
     bar.BorderSizePixel = 0
     mkCorner(bar, 2)
 
-    -- Subtle gradient background
     local gBg = Instance.new("Frame", card)
     gBg.Size = UDim2.new(1, 0, 1, 0)
     gBg.BackgroundColor3 = C.ACCENT
-    gBg.BackgroundTransparency = 0.96
+    gBg.BackgroundTransparency = 0.95
     gBg.BorderSizePixel = 0
 
     local t = Instance.new("TextLabel", card)
@@ -197,7 +186,6 @@ function DevNgg:Notify(cfg)
     prog.Size = UDim2.new(1, 0, 1, 0)
     prog.BackgroundColor3 = C.ACCENT
     prog.BorderSizePixel = 0
-    mkGradient(prog, C.ACCENT, Color3.fromRGB(40, 130, 190), 0)
 
     tw(card, MED, { BackgroundTransparency = 0 })
     tw(cs,   MED, { Transparency = 0 })
@@ -250,69 +238,58 @@ function DevNgg:CreateWindow(config)
     -- // Main frame
     local main = Instance.new("Frame", screenGui)
     main.Name = "Main"
-    main.Size = UDim2.new(0, 480, 0, 340)
-    main.Position = UDim2.new(0.5, -240, 0.5, -170)
+    main.Size = UDim2.new(0, 460, 0, 380)
+    main.Position = UDim2.new(0.5, -230, 0.5, -190)
     main.BackgroundColor3 = C.BG
     main.BorderSizePixel = 0
-    main.ClipsDescendants = false
+    main.ClipsDescendants = true
     mkCorner(main, 12)
     mkStroke(main, C.BORDER, 1)
     mainFrame = main
 
-    -- Subtle top gradient accent
+    -- Top accent line
     local topAccent = Instance.new("Frame", main)
     topAccent.Size = UDim2.new(1, 0, 0, 2)
-    topAccent.Position = UDim2.new(0, 0, 0, 0)
     topAccent.BackgroundColor3 = C.ACCENT
     topAccent.BorderSizePixel = 0
-    mkCorner(topAccent, 12)
-    mkGradient(topAccent, C.ACCENT, Color3.fromRGB(40, 130, 190), 0)
+    topAccent.ZIndex = 5
 
-    -- // Topbar
-    local topbar = Instance.new("Frame", main)
-    topbar.Name = "Topbar"
-    topbar.Size = UDim2.new(1, 0, 0, 52)
-    topbar.Position = UDim2.new(0, 0, 0, 0)
-    topbar.BackgroundColor3 = C.TOPBAR
-    topbar.BorderSizePixel = 0
-    mkCorner(topbar, 12)
+    -- // Header
+    local header = Instance.new("Frame", main)
+    header.Size = UDim2.new(1, 0, 0, 48)
+    header.Position = UDim2.new(0, 0, 0, 2)
+    header.BackgroundColor3 = C.TOPBAR
+    header.BorderSizePixel = 0
 
-    -- Cover bottom corners of topbar
-    local topbarFill = Instance.new("Frame", main)
-    topbarFill.Size = UDim2.new(1, 0, 0, 8)
-    topbarFill.Position = UDim2.new(0, 0, 0, 46)
-    topbarFill.BackgroundColor3 = C.TOPBAR
-    topbarFill.BorderSizePixel = 0
-
-    local titleLbl = Instance.new("TextLabel", topbar)
-    titleLbl.Size = UDim2.new(1, -120, 0, 28)
-    titleLbl.Position = UDim2.new(0, 16, 0, 12)
+    local titleLbl = Instance.new("TextLabel", header)
+    titleLbl.Size = UDim2.new(1, -110, 1, 0)
+    titleLbl.Position = UDim2.new(0, 14, 0, 0)
     titleLbl.BackgroundTransparency = 1
     titleLbl.Text = windowTitle
     titleLbl.TextColor3 = C.TEXT
-    titleLbl.TextSize = 16
+    titleLbl.TextSize = 15
     titleLbl.Font = Enum.Font.GothamBold
     titleLbl.TextXAlignment = Enum.TextXAlignment.Left
 
-    local subLbl = Instance.new("TextLabel", topbar)
+    local subLbl = Instance.new("TextLabel", header)
     subLbl.Size = UDim2.new(0, 200, 0, 14)
-    subLbl.Position = UDim2.new(0, 16, 0, 34)
+    subLbl.Position = UDim2.new(0, 14, 1, -16)
     subLbl.BackgroundTransparency = 1
     subLbl.Text = windowSub .. "  ·  " .. windowVer
     subLbl.TextColor3 = C.TEXT_DIM
-    subLbl.TextSize = 11
+    subLbl.TextSize = 10
     subLbl.Font = Enum.Font.Gotham
     subLbl.TextXAlignment = Enum.TextXAlignment.Left
 
-    -- Control buttons
+    -- Window control buttons
     local function mkBtn(xOffset, sym)
-        local b = Instance.new("TextButton", topbar)
-        b.Size = UDim2.new(0, 26, 0, 26)
-        b.Position = UDim2.new(1, xOffset, 0.5, -13)
+        local b = Instance.new("TextButton", header)
+        b.Size = UDim2.new(0, 24, 0, 24)
+        b.Position = UDim2.new(1, xOffset, 0.5, -12)
         b.BackgroundColor3 = C.SURFACE2
         b.Text = sym
         b.TextColor3 = C.TEXT_DIM
-        b.TextSize = 14
+        b.TextSize = 13
         b.Font = Enum.Font.GothamBold
         b.BorderSizePixel = 0
         b.AutoButtonColor = false
@@ -328,60 +305,57 @@ function DevNgg:CreateWindow(config)
         return b
     end
 
-    local closeBtn = mkBtn(-12, "×")
-    local minBtn   = mkBtn(-44, "−")
+    local closeBtn = mkBtn(-10, "×")
+    local minBtn   = mkBtn(-40, "−")
 
     closeBtn.MouseButton1Click:Connect(function()
         DevNgg:SetVisibility(false)
     end)
 
+    -- Header separator
+    local headerSep = Instance.new("Frame", main)
+    headerSep.Size = UDim2.new(1, 0, 0, 1)
+    headerSep.Position = UDim2.new(0, 0, 0, 50)
+    headerSep.BackgroundColor3 = C.BORDER
+    headerSep.BorderSizePixel = 0
+
     -- // Tab bar
     local tabBar = Instance.new("Frame", main)
     tabBar.Name = "TabBar"
-    tabBar.Size = UDim2.new(0, 140, 1, -54)
-    tabBar.Position = UDim2.new(0, 0, 0, 54)
-    tabBar.BackgroundColor3 = C.SURFACE3
+    tabBar.Size = UDim2.new(1, 0, 0, 36)
+    tabBar.Position = UDim2.new(0, 0, 0, 51)
+    tabBar.BackgroundColor3 = C.TOPBAR
     tabBar.BorderSizePixel = 0
 
-    -- Bottom-left corner rounding
-    local tabBarCorner = Instance.new("UICorner", tabBar)
-    tabBarCorner.CornerRadius = UDim.new(0, 12)
+    local tabBarList = Instance.new("UIListLayout", tabBar)
+    tabBarList.FillDirection = Enum.FillDirection.Horizontal
+    tabBarList.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    tabBarList.VerticalAlignment = Enum.VerticalAlignment.Center
+    tabBarList.SortOrder = Enum.SortOrder.LayoutOrder
+    tabBarList.Padding = UDim.new(0, 0)
 
-    -- Fill top-right corner
-    local tabBarFill = Instance.new("Frame", tabBar)
-    tabBarFill.Size = UDim2.new(0, 12, 1, 0)
-    tabBarFill.Position = UDim2.new(1, -12, 0, 0)
-    tabBarFill.BackgroundColor3 = C.SURFACE3
-    tabBarFill.BorderSizePixel = 0
+    local tabBarPad = Instance.new("UIPadding", tabBar)
+    tabBarPad.PaddingLeft = UDim.new(0, 8)
 
-    local tabList = Instance.new("UIListLayout", tabBar)
-    tabList.Padding = UDim.new(0, 2)
-    tabList.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    tabList.SortOrder = Enum.SortOrder.LayoutOrder
-
-    local tabPad = Instance.new("UIPadding", tabBar)
-    tabPad.PaddingTop = UDim.new(0, 10)
-    tabPad.PaddingLeft = UDim.new(0, 8)
-    tabPad.PaddingRight = UDim.new(0, 8)
-
-    -- Divider between tab bar and content
-    local divider = Instance.new("Frame", main)
-    divider.Size = UDim2.new(0, 1, 1, -54)
-    divider.Position = UDim2.new(0, 140, 0, 54)
-    divider.BackgroundColor3 = C.BORDER
-    divider.BorderSizePixel = 0
+    -- Tab bar bottom separator
+    local tabSep = Instance.new("Frame", main)
+    tabSep.Size = UDim2.new(1, 0, 0, 1)
+    tabSep.Position = UDim2.new(0, 0, 0, 87)
+    tabSep.BackgroundColor3 = C.BORDER
+    tabSep.BorderSizePixel = 0
 
     -- // Content area
     local contentArea = Instance.new("Frame", main)
     contentArea.Name = "ContentArea"
-    contentArea.Size = UDim2.new(1, -141, 1, -54)
-    contentArea.Position = UDim2.new(0, 141, 0, 54)
+    contentArea.Size = UDim2.new(1, 0, 1, -88)
+    contentArea.Position = UDim2.new(0, 0, 0, 88)
     contentArea.BackgroundTransparency = 1
     contentArea.ClipsDescendants = true
 
     local minimized = false
     local tabFrames = {}
     local tabButtons = {}
+    local tabUnderlines = {}
     local activeTab = nil
 
     local function switchTab(name)
@@ -389,18 +363,14 @@ function DevNgg:CreateWindow(config)
             frame.Visible = (n == name)
         end
         for n, btn in pairs(tabButtons) do
+            local lbl = btn:FindFirstChildOfClass("TextLabel")
+            local ul = tabUnderlines[n]
             if n == name then
-                tw(btn, FAST, { BackgroundColor3 = C.TAB_SEL })
-                local lbl = btn:FindFirstChildOfClass("TextLabel")
-                if lbl then tw(lbl, FAST, { TextColor3 = C.TEXT }) end
-                local sel = btn:FindFirstChild("Selector")
-                if sel then tw(sel, FAST, { BackgroundTransparency = 0 }) end
+                if lbl then tw(lbl, FAST, { TextColor3 = C.ACCENT }) end
+                if ul then tw(ul, FAST, { BackgroundTransparency = 0 }) end
             else
-                tw(btn, FAST, { BackgroundColor3 = C.TAB_UNSEL })
-                local lbl = btn:FindFirstChildOfClass("TextLabel")
                 if lbl then tw(lbl, FAST, { TextColor3 = C.TEXT_DIM }) end
-                local sel = btn:FindFirstChild("Selector")
-                if sel then tw(sel, FAST, { BackgroundTransparency = 1 }) end
+                if ul then tw(ul, FAST, { BackgroundTransparency = 1 }) end
             end
         end
         activeTab = name
@@ -409,12 +379,11 @@ function DevNgg:CreateWindow(config)
     minBtn.MouseButton1Click:Connect(function()
         minimized = not minimized
         tabBar.Visible = not minimized
-        tabBarFill.Visible = not minimized
-        divider.Visible = not minimized
+        tabSep.Visible = not minimized
+        headerSep.Visible = not minimized
         contentArea.Visible = not minimized
-        topbarFill.Visible = not minimized
-        local targetH = minimized and 52 or 340
-        tw(main, MED, { Size = UDim2.new(0, 480, 0, targetH) })
+        local targetH = minimized and 50 or 380
+        tw(main, MED, { Size = UDim2.new(0, 460, 0, targetH) })
         minBtn.Text = minimized and "+" or "−"
     end)
 
@@ -430,7 +399,7 @@ function DevNgg:CreateWindow(config)
 
     -- Dragging
     local dragging, dragStart, startPos
-    topbar.InputBegan:Connect(function(input)
+    header.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = true; dragStart = input.Position; startPos = main.Position
         end
@@ -448,45 +417,46 @@ function DevNgg:CreateWindow(config)
     local Window = {}
 
     function Window:CreateTab(name, icon)
-        -- Tab button in sidebar
+        -- Tab button
         local tabBtn = Instance.new("TextButton", tabBar)
         tabBtn.Name = name
-        tabBtn.Size = UDim2.new(1, 0, 0, 36)
-        tabBtn.BackgroundColor3 = C.TAB_UNSEL
+        tabBtn.Size = UDim2.new(0, 0, 1, 0)
+        tabBtn.AutomaticSize = Enum.AutomaticSize.X
+        tabBtn.BackgroundTransparency = 1
         tabBtn.BorderSizePixel = 0
         tabBtn.Text = ""
         tabBtn.AutoButtonColor = false
-        mkCorner(tabBtn, 8)
 
-        -- Active selector bar
-        local selector = Instance.new("Frame", tabBtn)
-        selector.Name = "Selector"
-        selector.Size = UDim2.new(0, 3, 0, 18)
-        selector.Position = UDim2.new(0, 0, 0.5, -9)
-        selector.BackgroundColor3 = C.ACCENT
-        selector.BorderSizePixel = 0
-        selector.BackgroundTransparency = 1
-        mkCorner(selector, 2)
+        local tabPad = Instance.new("UIPadding", tabBtn)
+        tabPad.PaddingLeft = UDim.new(0, 14)
+        tabPad.PaddingRight = UDim.new(0, 14)
 
         local tabLbl = Instance.new("TextLabel", tabBtn)
-        tabLbl.Size = UDim2.new(1, -10, 1, 0)
-        tabLbl.Position = UDim2.new(0, 10, 0, 0)
+        tabLbl.Size = UDim2.new(1, 0, 1, -4)
         tabLbl.BackgroundTransparency = 1
         tabLbl.Text = name
         tabLbl.TextColor3 = C.TEXT_DIM
         tabLbl.TextSize = 12
         tabLbl.Font = Enum.Font.GothamSemibold
-        tabLbl.TextXAlignment = Enum.TextXAlignment.Left
+        tabLbl.TextXAlignment = Enum.TextXAlignment.Center
+
+        -- Active underline indicator
+        local underline = Instance.new("Frame", tabBtn)
+        underline.Name = "Underline"
+        underline.Size = UDim2.new(1, -16, 0, 2)
+        underline.Position = UDim2.new(0, 8, 1, -2)
+        underline.BackgroundColor3 = C.ACCENT
+        underline.BorderSizePixel = 0
+        underline.BackgroundTransparency = 1
+        mkCorner(underline, 2)
 
         tabBtn.MouseEnter:Connect(function()
             if activeTab ~= name then
-                tw(tabBtn, FAST, { BackgroundColor3 = C.BTN_HOV })
                 tw(tabLbl, FAST, { TextColor3 = C.TEXT_MID })
             end
         end)
         tabBtn.MouseLeave:Connect(function()
             if activeTab ~= name then
-                tw(tabBtn, FAST, { BackgroundColor3 = C.TAB_UNSEL })
                 tw(tabLbl, FAST, { TextColor3 = C.TEXT_DIM })
             end
         end)
@@ -495,12 +465,12 @@ function DevNgg:CreateWindow(config)
         end)
 
         tabButtons[name] = tabBtn
+        tabUnderlines[name] = underline
 
-        -- Scrollable content frame for this tab
+        -- Scrollable content frame
         local scrollFrame = Instance.new("ScrollingFrame", contentArea)
         scrollFrame.Name = name
         scrollFrame.Size = UDim2.new(1, 0, 1, 0)
-        scrollFrame.Position = UDim2.new(0, 0, 0, 0)
         scrollFrame.BackgroundTransparency = 1
         scrollFrame.BorderSizePixel = 0
         scrollFrame.ScrollBarThickness = 3
@@ -510,19 +480,18 @@ function DevNgg:CreateWindow(config)
         scrollFrame.Visible = false
 
         local listLayout = Instance.new("UIListLayout", scrollFrame)
-        listLayout.Padding = UDim.new(0, 4)
+        listLayout.Padding = UDim.new(0, 5)
         listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
         listLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
         local pad = Instance.new("UIPadding", scrollFrame)
-        pad.PaddingTop    = UDim.new(0, 10)
-        pad.PaddingBottom = UDim.new(0, 10)
-        pad.PaddingLeft   = UDim.new(0, 10)
-        pad.PaddingRight  = UDim.new(0, 14)
+        pad.PaddingTop    = UDim.new(0, 12)
+        pad.PaddingBottom = UDim.new(0, 12)
+        pad.PaddingLeft   = UDim.new(0, 12)
+        pad.PaddingRight  = UDim.new(0, 16)
 
         tabFrames[name] = scrollFrame
 
-        -- Auto select first tab
         if not activeTab then
             switchTab(name)
         end
@@ -531,7 +500,7 @@ function DevNgg:CreateWindow(config)
 
         function Tab:CreateSection(sectionName)
             local row = Instance.new("Frame", scrollFrame)
-            row.Size = UDim2.new(1, 0, 0, 22)
+            row.Size = UDim2.new(1, 0, 0, 24)
             row.BackgroundTransparency = 1
 
             local line = Instance.new("Frame", row)
@@ -571,7 +540,7 @@ function DevNgg:CreateWindow(config)
             local currentValue = cfg.CurrentValue or false
 
             local row = Instance.new("TextButton", scrollFrame)
-            row.Size = UDim2.new(1, 0, 0, 46)
+            row.Size = UDim2.new(1, 0, 0, 44)
             row.BackgroundColor3 = C.SURFACE
             row.BorderSizePixel = 0
             row.Text = ""
