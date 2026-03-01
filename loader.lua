@@ -299,60 +299,83 @@ function DevNgg:CreateWindow(config)
         DevNgg:SetVisibility(false)
     end)
 
-    -- Separator
+    -- Separator under header
     local sep = Instance.new("Frame", main)
-    sep.Size = UDim2.new(1, -24, 0, 1)
-    sep.Position = UDim2.new(0, 12, 0, 76)
+    sep.Size = UDim2.new(1, 0, 0, 1)
+    sep.Position = UDim2.new(0, 0, 0, 76)
     sep.BackgroundColor3 = C.BORDER
     sep.BorderSizePixel = 0
-    sep.Visible = false
 
-    -- Clip wrapper so content clips but buttons don't get cut
+    -- Tab bar
+    local tabBar = Instance.new("Frame", main)
+    tabBar.Size = UDim2.new(1, 0, 0, 36)
+    tabBar.Position = UDim2.new(0, 0, 0, 77)
+    tabBar.BackgroundColor3 = C.SURFACE
+    tabBar.BorderSizePixel = 0
+
+    local tabBarLayout = Instance.new("UIListLayout", tabBar)
+    tabBarLayout.FillDirection = Enum.FillDirection.Horizontal
+    tabBarLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    tabBarLayout.Padding = UDim.new(0, 0)
+
+    -- Bottom border under tab bar
+    local tabBarSep = Instance.new("Frame", main)
+    tabBarSep.Size = UDim2.new(1, 0, 0, 1)
+    tabBarSep.Position = UDim2.new(0, 0, 0, 113)
+    tabBarSep.BackgroundColor3 = C.BORDER
+    tabBarSep.BorderSizePixel = 0
+
+    -- Clip wrapper for content area
     local clipFrame = Instance.new("Frame", main)
     clipFrame.Name = "ClipFrame"
-    clipFrame.Size = UDim2.new(1, 0, 1, 0)
-    clipFrame.Position = UDim2.new(0, 0, 0, 0)
+    clipFrame.Size = UDim2.new(1, 0, 1, -114)
+    clipFrame.Position = UDim2.new(0, 0, 0, 114)
     clipFrame.BackgroundTransparency = 1
     clipFrame.ClipsDescendants = true
-    clipFrame.ZIndex = 1
-
-    -- Content
-    local content = Instance.new("Frame", clipFrame)
-    content.Name = "Content"
-    content.Size = UDim2.new(1, 0, 1, -84)
-    content.Position = UDim2.new(0, 0, 0, 84)
-    content.BackgroundTransparency = 1
-
-    local listLayout = Instance.new("UIListLayout", content)
-    listLayout.Padding = UDim.new(0, 3)
-    listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-
-    local pad = Instance.new("UIPadding", content)
-    pad.PaddingTop    = UDim.new(0, 8)
-    pad.PaddingBottom = UDim.new(0, 10)
-    pad.PaddingLeft   = UDim.new(0, 10)
-    pad.PaddingRight  = UDim.new(0, 10)
 
     local minimized = false
+    local tabs = {}
+    local activeTab = nil
+    local tabCount = 0
 
-    local function updateSize()
-        if minimized then return end
-        local h = 84 + listLayout.AbsoluteContentSize.Y + 18
-        tw(main,      TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Size = UDim2.new(0, 530, 0, h) })
-        tw(clipFrame, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Size = UDim2.new(0, 530, 0, h) })
+    local function switchTab(tab)
+        for _, t in ipairs(tabs) do
+            t.content.Visible = false
+            tw(t.btn, FAST, {
+                BackgroundColor3 = C.SURFACE,
+                TextColor3 = C.TEXT_DIM,
+            })
+            t.indicator.BackgroundTransparency = 1
+        end
+        tab.content.Visible = true
+        activeTab = tab
+        tw(tab.btn, FAST, {
+            BackgroundColor3 = C.SURFACE,
+            TextColor3 = C.TEXT,
+        })
+        tab.indicator.BackgroundTransparency = 0
+        -- resize main to fit active tab content
+        local h = 114 + tab.listLayout.AbsoluteContentSize.Y + 18
+        h = math.min(h, 600)
+        main.Size = UDim2.new(0, 530, 0, h)
+        clipFrame.Size = UDim2.new(1, 0, 0, h - 114)
     end
-    listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateSize)
 
     minBtn.MouseButton1Click:Connect(function()
         minimized = not minimized
-        content.Visible = not minimized
+        tabBar.Visible = not minimized
+        tabBarSep.Visible = not minimized
+        clipFrame.Visible = not minimized
         sep.Visible = not minimized
-        local targetH = minimized
-            and 76
-            or  (84 + listLayout.AbsoluteContentSize.Y + 18)
-        tw(main, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Size = UDim2.new(0, 530, 0, targetH) })
-        tw(clipFrame, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Size = UDim2.new(0, 530, 0, targetH) })
+        if minimized then
+            tw(main, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Size = UDim2.new(0, 530, 0, 76) })
+        else
+            if activeTab then
+                local h = math.min(114 + activeTab.listLayout.AbsoluteContentSize.Y + 18, 600)
+                tw(main, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Size = UDim2.new(0, 530, 0, h) })
+                clipFrame.Size = UDim2.new(1, 0, 0, h - 114)
+            end
+        end
         minBtn.Text = minimized and "+" or "−"
     end)
 
@@ -386,15 +409,90 @@ function DevNgg:CreateWindow(config)
     local Window = {}
 
     function Window:CreateTab(name, icon)
-        local tabLbl = Instance.new("TextLabel", content)
-        tabLbl.Size = UDim2.new(1, 0, 0, 14)
-        tabLbl.BackgroundTransparency = 1
-        tabLbl.Text = name:upper()
-        tabLbl.TextColor3 = C.TEXT_DIM
-        tabLbl.TextSize = 9
-        tabLbl.Font = Enum.Font.GothamBold
-        tabLbl.TextXAlignment = Enum.TextXAlignment.Left
+        tabCount += 1
+        local tabIndex = tabCount
 
+        -- Tab button in tab bar
+        local btn = Instance.new("TextButton", tabBar)
+        btn.Size = UDim2.new(0, 0, 1, 0)
+        btn.AutomaticSize = Enum.AutomaticSize.X
+        btn.BackgroundColor3 = C.SURFACE
+        btn.BorderSizePixel = 0
+        btn.Text = "  " .. name .. "  "
+        btn.TextColor3 = C.TEXT_DIM
+        btn.TextSize = 12
+        btn.Font = Enum.Font.GothamSemibold
+        btn.AutoButtonColor = false
+        btn.LayoutOrder = tabIndex
+
+        local btnPad = Instance.new("UIPadding", btn)
+        btnPad.PaddingLeft = UDim.new(0, 4)
+        btnPad.PaddingRight = UDim.new(0, 4)
+
+        -- Active indicator line at bottom of tab button
+        local indicator = Instance.new("Frame", btn)
+        indicator.Size = UDim2.new(1, 0, 0, 2)
+        indicator.Position = UDim2.new(0, 0, 1, -2)
+        indicator.BackgroundColor3 = C.ACCENT
+        indicator.BorderSizePixel = 0
+        indicator.BackgroundTransparency = 1
+
+        -- Scrollable content frame for this tab
+        local tabContent = Instance.new("ScrollingFrame", clipFrame)
+        tabContent.Size = UDim2.new(1, 0, 1, 0)
+        tabContent.Position = UDim2.new(0, 0, 0, 0)
+        tabContent.BackgroundTransparency = 1
+        tabContent.BorderSizePixel = 0
+        tabContent.ScrollBarThickness = 3
+        tabContent.ScrollBarImageColor3 = C.BORDER2
+        tabContent.CanvasSize = UDim2.new(0, 0, 0, 0)
+        tabContent.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        tabContent.Visible = false
+
+        local tabListLayout = Instance.new("UIListLayout", tabContent)
+        tabListLayout.Padding = UDim.new(0, 3)
+        tabListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        tabListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+        local tabPad = Instance.new("UIPadding", tabContent)
+        tabPad.PaddingTop    = UDim.new(0, 8)
+        tabPad.PaddingBottom = UDim.new(0, 10)
+        tabPad.PaddingLeft   = UDim.new(0, 10)
+        tabPad.PaddingRight  = UDim.new(0, 10)
+
+        local tabData = { btn = btn, content = tabContent, listLayout = tabListLayout, indicator = indicator }
+        table.insert(tabs, tabData)
+
+        -- Auto-switch to first tab
+        if tabCount == 1 then
+            task.defer(function() switchTab(tabData) end)
+        end
+
+        -- Resize on content change
+        tabListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+            if activeTab == tabData and not minimized then
+                local h = math.min(114 + tabListLayout.AbsoluteContentSize.Y + 18, 600)
+                main.Size = UDim2.new(0, 530, 0, h)
+                clipFrame.Size = UDim2.new(1, 0, 0, h - 114)
+            end
+        end)
+
+        btn.MouseButton1Click:Connect(function()
+            switchTab(tabData)
+        end)
+        btn.MouseEnter:Connect(function()
+            if activeTab ~= tabData then
+                tw(btn, FAST, { TextColor3 = C.TEXT_MID })
+            end
+        end)
+        btn.MouseLeave:Connect(function()
+            if activeTab ~= tabData then
+                tw(btn, FAST, { TextColor3 = C.TEXT_DIM })
+            end
+        end)
+
+        -- Tab object returned to script
+        local content = tabContent
         local Tab = {}
 
         function Tab:CreateSection(sectionName)
@@ -756,7 +854,6 @@ function DevNgg:CreateWindow(config)
         end
     end
 
-    updateSize()
     return Window
 end
 
