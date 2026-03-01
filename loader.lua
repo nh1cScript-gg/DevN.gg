@@ -269,10 +269,10 @@ function DevNgg:CreateWindow(config)
     subLbl.TextXAlignment = Enum.TextXAlignment.Left
 
     -- Control buttons
-    local function mkBtn(ox, sym)
-        local b = Instance.new("TextButton", header)
+    local function mkBtn(xPos, sym)
+        local b = Instance.new("TextButton", main)
         b.Size = UDim2.new(0, 28, 0, 28)
-        b.Position = UDim2.new(1, ox, 0.5, -14)
+        b.Position = UDim2.new(0, xPos, 0, 24)
         b.BackgroundColor3 = C.SURFACE2
         b.Text = sym
         b.TextColor3 = C.TEXT_DIM
@@ -280,6 +280,7 @@ function DevNgg:CreateWindow(config)
         b.Font = Enum.Font.GothamBold
         b.BorderSizePixel = 0
         b.AutoButtonColor = false
+        b.ZIndex = 5
         mkCorner(b, 6)
         mkStroke(b, C.BORDER, 1)
         b.MouseEnter:Connect(function()
@@ -291,8 +292,8 @@ function DevNgg:CreateWindow(config)
         return b
     end
 
-    local closeBtn = mkBtn(-44, "×")
-    local minBtn   = mkBtn(-78, "−")
+    local closeBtn = mkBtn(378, "×")
+    local minBtn   = mkBtn(344, "−")
 
     closeBtn.MouseButton1Click:Connect(function()
         DevNgg:SetVisibility(false)
