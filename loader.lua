@@ -1,7 +1,7 @@
 -- DevN.gg GUI Library
 -- loader.lua
 
-local DevNgg = {}
+local DevNgg = loadstring(game:HttpGet('https://raw.githubusercontent.com/nh1cScript-gg/DevN.gg/main/loader.lua'))()
 
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
