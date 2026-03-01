@@ -1,7 +1,7 @@
 -- DevN.gg GUI Library
 -- loader.lua
 -- Load with:
--- local DevNgg = https://raw.githubusercontent.com/nh1cScript-gg/DevN.gg/main/loader.lua
+-- local DevNgg = loadstring(game:HttpGet('https://raw.githubusercontent.com/nh1cScript-gg/DevN.gg/main/loader.lua'))()
 
 local DevNgg = {}
 
@@ -64,7 +64,7 @@ function DevNgg:Destroy()
     if mainFrame then mainFrame.Parent:Destroy() end
 end
 
--- // Notify
+-- // Notifications (Rayfield style - right side stacked)
 
 local notifGui = Instance.new("ScreenGui")
 notifGui.Name = "DevNggNotif"
@@ -72,82 +72,113 @@ notifGui.ResetOnSpawn = false
 notifGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 notifGui.Parent = playerGui
 
-local notifFrame = Instance.new("Frame")
-notifFrame.Size = UDim2.new(0, 250, 0, 48)
-notifFrame.Position = UDim2.new(0.5, -125, 1, -64)
-notifFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
-notifFrame.BorderSizePixel = 0
-notifFrame.BackgroundTransparency = 1
-notifFrame.Parent = notifGui
-Instance.new("UICorner", notifFrame).CornerRadius = UDim.new(0, 8)
+local notifContainer = Instance.new("Frame")
+notifContainer.Name = "NotifContainer"
+notifContainer.Size = UDim2.new(0, 300, 1, 0)
+notifContainer.Position = UDim2.new(1, -316, 0, 0)
+notifContainer.BackgroundTransparency = 1
+notifContainer.Parent = notifGui
 
-local notifStroke = Instance.new("UIStroke", notifFrame)
-notifStroke.Color = Color3.fromRGB(55, 55, 55)
-notifStroke.Thickness = 1
-notifStroke.Transparency = 1
+local notifLayout = Instance.new("UIListLayout", notifContainer)
+notifLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+notifLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+notifLayout.SortOrder = Enum.SortOrder.LayoutOrder
+notifLayout.Padding = UDim.new(0, 8)
 
-local notifTitle = Instance.new("TextLabel", notifFrame)
-notifTitle.Size = UDim2.new(1, -16, 0, 20)
-notifTitle.Position = UDim2.new(0, 10, 0, 4)
-notifTitle.BackgroundTransparency = 1
-notifTitle.TextColor3 = Color3.fromRGB(230, 230, 230)
-notifTitle.TextSize = 11
-notifTitle.Font = Enum.Font.GothamBold
-notifTitle.TextXAlignment = Enum.TextXAlignment.Left
-notifTitle.Text = ""
-
-local notifContent = Instance.new("TextLabel", notifFrame)
-notifContent.Size = UDim2.new(1, -16, 0, 18)
-notifContent.Position = UDim2.new(0, 10, 0, 24)
-notifContent.BackgroundTransparency = 1
-notifContent.TextColor3 = Color3.fromRGB(130, 130, 130)
-notifContent.TextSize = 10
-notifContent.Font = Enum.Font.Gotham
-notifContent.TextXAlignment = Enum.TextXAlignment.Left
-notifContent.TextWrapped = true
-notifContent.Text = ""
-
-local notifQueue = {}
-local notifBusy = false
-
-local function runNotifQueue()
-    if notifBusy then return end
-    notifBusy = true
-    task.spawn(function()
-        while #notifQueue > 0 do
-            local item = table.remove(notifQueue, 1)
-            notifTitle.Text = item.title or ""
-            notifContent.Text = item.content or ""
-            TweenService:Create(notifFrame, TweenInfo.new(0.2), { BackgroundTransparency = 0 }):Play()
-            TweenService:Create(notifStroke, TweenInfo.new(0.2), { Transparency = 0 }):Play()
-            task.wait(item.duration or 3)
-            TweenService:Create(notifFrame, TweenInfo.new(0.2), { BackgroundTransparency = 1 }):Play()
-            TweenService:Create(notifStroke, TweenInfo.new(0.2), { Transparency = 1 }):Play()
-            task.wait(0.3)
-        end
-        notifBusy = false
-    end)
-end
+local notifPadding = Instance.new("UIPadding", notifContainer)
+notifPadding.PaddingBottom = UDim.new(0, 16)
+notifPadding.PaddingRight = UDim.new(0, 8)
 
 function DevNgg:Notify(config)
-    table.insert(notifQueue, {
-        title = config.Title or "DevN.gg",
-        content = config.Content or "",
-        duration = config.Duration or 3,
-    })
-    runNotifQueue()
-end
+    local title   = config.Title or "DevN.gg"
+    local content = config.Content or ""
+    local duration = config.Duration or 3
 
--- // LoadConfiguration
+    -- Notif card
+    local card = Instance.new("Frame")
+    card.Size = UDim2.new(1, 0, 0, 64)
+    card.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+    card.BorderSizePixel = 0
+    card.BackgroundTransparency = 1
+    card.ClipsDescendants = true
+    card.Parent = notifContainer
+    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 8)
 
-function DevNgg:LoadConfiguration()
-    local saved = loadConfig()
-    for flag, val in pairs(saved) do
-        local setter = toggleSetters[flag]
-        if setter and type(val) == "boolean" then
-            setter(val, false)
-        end
-    end
+    local cardStroke = Instance.new("UIStroke", card)
+    cardStroke.Color = Color3.fromRGB(50, 50, 50)
+    cardStroke.Thickness = 1
+    cardStroke.Transparency = 1
+
+    -- Accent bar on left
+    local accent = Instance.new("Frame", card)
+    accent.Size = UDim2.new(0, 3, 1, 0)
+    accent.BackgroundColor3 = Color3.fromRGB(75, 195, 115)
+    accent.BorderSizePixel = 0
+    Instance.new("UICorner", accent).CornerRadius = UDim.new(0, 4)
+
+    -- Title
+    local titleLbl = Instance.new("TextLabel", card)
+    titleLbl.Size = UDim2.new(1, -24, 0, 22)
+    titleLbl.Position = UDim2.new(0, 14, 0, 8)
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.Text = title
+    titleLbl.TextColor3 = Color3.fromRGB(230, 230, 230)
+    titleLbl.TextSize = 13
+    titleLbl.Font = Enum.Font.GothamBold
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    -- Content
+    local contentLbl = Instance.new("TextLabel", card)
+    contentLbl.Size = UDim2.new(1, -24, 0, 26)
+    contentLbl.Position = UDim2.new(0, 14, 0, 30)
+    contentLbl.BackgroundTransparency = 1
+    contentLbl.Text = content
+    contentLbl.TextColor3 = Color3.fromRGB(120, 120, 120)
+    contentLbl.TextSize = 11
+    contentLbl.Font = Enum.Font.Gotham
+    contentLbl.TextXAlignment = Enum.TextXAlignment.Left
+    contentLbl.TextWrapped = true
+
+    -- Progress bar at bottom
+    local progressBg = Instance.new("Frame", card)
+    progressBg.Size = UDim2.new(1, 0, 0, 2)
+    progressBg.Position = UDim2.new(0, 0, 1, -2)
+    progressBg.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    progressBg.BorderSizePixel = 0
+
+    local progressBar = Instance.new("Frame", progressBg)
+    progressBar.Size = UDim2.new(1, 0, 1, 0)
+    progressBar.BackgroundColor3 = Color3.fromRGB(75, 195, 115)
+    progressBar.BorderSizePixel = 0
+
+    -- Slide in from right
+    card.Position = UDim2.new(0, 320, 0, 0)
+    TweenService:Create(card, TweenInfo.new(0.3, Enum.EasingStyle.Quint), {
+        BackgroundTransparency = 0
+    }):Play()
+    TweenService:Create(cardStroke, TweenInfo.new(0.3), {
+        Transparency = 0
+    }):Play()
+
+    -- Progress bar drain
+    TweenService:Create(progressBar, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
+        Size = UDim2.new(0, 0, 1, 0)
+    }):Play()
+
+    task.delay(duration, function()
+        -- Fade out
+        TweenService:Create(card, TweenInfo.new(0.3), {
+            BackgroundTransparency = 1
+        }):Play()
+        TweenService:Create(cardStroke, TweenInfo.new(0.3), {
+            Transparency = 1
+        }):Play()
+        TweenService:Create(titleLbl, TweenInfo.new(0.3), { TextTransparency = 1 }):Play()
+        TweenService:Create(contentLbl, TweenInfo.new(0.3), { TextTransparency = 1 }):Play()
+        TweenService:Create(accent, TweenInfo.new(0.3), { BackgroundTransparency = 1 }):Play()
+        task.wait(0.35)
+        card:Destroy()
+    end)
 end
 
 -- // CreateWindow
@@ -170,11 +201,11 @@ function DevNgg:CreateWindow(config)
     screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     screenGui.Parent = playerGui
 
-    -- Main frame
+    -- Main frame — bigger size
     local main = Instance.new("Frame")
     main.Name = "Main"
-    main.Size = UDim2.new(0, 240, 0, 60)
-    main.Position = UDim2.new(0.5, -120, 0, 16)
+    main.Size = UDim2.new(0, 320, 0, 70)
+    main.Position = UDim2.new(0.5, -160, 0, 20)
     main.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
     main.BorderSizePixel = 0
     main.ClipsDescendants = true
@@ -185,13 +216,12 @@ function DevNgg:CreateWindow(config)
 
     -- Header
     local header = Instance.new("Frame")
-    header.Size = UDim2.new(1, 0, 0, 56)
+    header.Size = UDim2.new(1, 0, 0, 64)
     header.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
     header.BorderSizePixel = 0
     header.Parent = main
     Instance.new("UICorner", header).CornerRadius = UDim.new(0, 10)
 
-    -- Fix header bottom rounded corners
     local headerFix = Instance.new("Frame")
     headerFix.Size = UDim2.new(1, 0, 0, 10)
     headerFix.Position = UDim2.new(0, 0, 1, -10)
@@ -201,24 +231,24 @@ function DevNgg:CreateWindow(config)
 
     -- Title
     local titleLabel = Instance.new("TextLabel")
-    titleLabel.Size = UDim2.new(1, -70, 0, 20)
-    titleLabel.Position = UDim2.new(0, 12, 0, 8)
+    titleLabel.Size = UDim2.new(1, -80, 0, 24)
+    titleLabel.Position = UDim2.new(0, 14, 0, 10)
     titleLabel.BackgroundTransparency = 1
     titleLabel.Text = windowTitle
     titleLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
-    titleLabel.TextSize = 13
+    titleLabel.TextSize = 15
     titleLabel.Font = Enum.Font.GothamBold
     titleLabel.TextXAlignment = Enum.TextXAlignment.Left
     titleLabel.Parent = header
 
     -- Subtitle + version
     local subLabel = Instance.new("TextLabel")
-    subLabel.Size = UDim2.new(1, -70, 0, 16)
-    subLabel.Position = UDim2.new(0, 12, 0, 30)
+    subLabel.Size = UDim2.new(1, -80, 0, 18)
+    subLabel.Position = UDim2.new(0, 14, 0, 36)
     subLabel.BackgroundTransparency = 1
     subLabel.Text = windowSub .. "  •  " .. windowVersion
-    subLabel.TextColor3 = Color3.fromRGB(80, 80, 80)
-    subLabel.TextSize = 10
+    subLabel.TextColor3 = Color3.fromRGB(75, 75, 75)
+    subLabel.TextSize = 11
     subLabel.Font = Enum.Font.Gotham
     subLabel.TextXAlignment = Enum.TextXAlignment.Left
     subLabel.Parent = header
@@ -226,12 +256,12 @@ function DevNgg:CreateWindow(config)
     -- Minimize button
     local minimized = false
     local minBtn = Instance.new("TextButton")
-    minBtn.Size = UDim2.new(0, 24, 0, 24)
-    minBtn.Position = UDim2.new(1, -56, 0, 16)
+    minBtn.Size = UDim2.new(0, 28, 0, 28)
+    minBtn.Position = UDim2.new(1, -64, 0, 18)
     minBtn.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
     minBtn.Text = "−"
     minBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
-    minBtn.TextSize = 15
+    minBtn.TextSize = 16
     minBtn.Font = Enum.Font.GothamBold
     minBtn.BorderSizePixel = 0
     minBtn.AutoButtonColor = false
@@ -240,12 +270,12 @@ function DevNgg:CreateWindow(config)
 
     -- Close button
     local closeBtn = Instance.new("TextButton")
-    closeBtn.Size = UDim2.new(0, 24, 0, 24)
-    closeBtn.Position = UDim2.new(1, -28, 0, 16)
+    closeBtn.Size = UDim2.new(0, 28, 0, 28)
+    closeBtn.Position = UDim2.new(1, -32, 0, 18)
     closeBtn.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
     closeBtn.Text = "×"
     closeBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
-    closeBtn.TextSize = 16
+    closeBtn.TextSize = 18
     closeBtn.Font = Enum.Font.GothamBold
     closeBtn.BorderSizePixel = 0
     closeBtn.AutoButtonColor = false
@@ -259,28 +289,28 @@ function DevNgg:CreateWindow(config)
     -- Content
     local content = Instance.new("Frame")
     content.Name = "Content"
-    content.Size = UDim2.new(1, 0, 1, -64)
-    content.Position = UDim2.new(0, 0, 0, 64)
+    content.Size = UDim2.new(1, 0, 1, -72)
+    content.Position = UDim2.new(0, 0, 0, 72)
     content.BackgroundTransparency = 1
     content.Parent = main
 
     local listLayout = Instance.new("UIListLayout", content)
-    listLayout.Padding = UDim.new(0, 5)
+    listLayout.Padding = UDim.new(0, 6)
     listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
     listLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
     local contentPadding = Instance.new("UIPadding", content)
-    contentPadding.PaddingTop = UDim.new(0, 8)
-    contentPadding.PaddingBottom = UDim.new(0, 10)
-    contentPadding.PaddingLeft = UDim.new(0, 12)
-    contentPadding.PaddingRight = UDim.new(0, 12)
+    contentPadding.PaddingTop = UDim.new(0, 10)
+    contentPadding.PaddingBottom = UDim.new(0, 12)
+    contentPadding.PaddingLeft = UDim.new(0, 14)
+    contentPadding.PaddingRight = UDim.new(0, 14)
 
-    -- Auto resize
+    -- Auto resize window height
     local function updateSize()
         if minimized then return end
-        local h = 64 + listLayout.AbsoluteContentSize.Y + 18
+        local h = 72 + listLayout.AbsoluteContentSize.Y + 22
         TweenService:Create(main, TweenInfo.new(0.18), {
-            Size = UDim2.new(0, 240, 0, h)
+            Size = UDim2.new(0, 320, 0, h)
         }):Play()
     end
     listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateSize)
@@ -291,8 +321,8 @@ function DevNgg:CreateWindow(config)
         content.Visible = not minimized
         TweenService:Create(main, TweenInfo.new(0.18), {
             Size = minimized
-                and UDim2.new(0, 240, 0, 60)
-                or  UDim2.new(0, 240, 0, 64 + listLayout.AbsoluteContentSize.Y + 18)
+                and UDim2.new(0, 320, 0, 68)
+                or  UDim2.new(0, 320, 0, 72 + listLayout.AbsoluteContentSize.Y + 22)
         }):Play()
         minBtn.Text = minimized and "+" or "−"
     end)
@@ -335,11 +365,11 @@ function DevNgg:CreateWindow(config)
 
     function Window:CreateTab(name, icon)
         local tabLabel = Instance.new("TextLabel")
-        tabLabel.Size = UDim2.new(1, 0, 0, 16)
+        tabLabel.Size = UDim2.new(1, 0, 0, 18)
         tabLabel.BackgroundTransparency = 1
         tabLabel.Text = name:upper()
         tabLabel.TextColor3 = Color3.fromRGB(65, 65, 65)
-        tabLabel.TextSize = 9
+        tabLabel.TextSize = 10
         tabLabel.Font = Enum.Font.GothamBold
         tabLabel.TextXAlignment = Enum.TextXAlignment.Left
         tabLabel.Parent = content
@@ -354,11 +384,11 @@ function DevNgg:CreateWindow(config)
             sep.Parent = content
 
             local lbl = Instance.new("TextLabel")
-            lbl.Size = UDim2.new(1, 0, 0, 16)
+            lbl.Size = UDim2.new(1, 0, 0, 18)
             lbl.BackgroundTransparency = 1
             lbl.Text = sectionName:upper()
             lbl.TextColor3 = Color3.fromRGB(65, 65, 65)
-            lbl.TextSize = 9
+            lbl.TextSize = 10
             lbl.Font = Enum.Font.GothamBold
             lbl.TextXAlignment = Enum.TextXAlignment.Left
             lbl.Parent = content
@@ -389,35 +419,35 @@ function DevNgg:CreateWindow(config)
             local currentValue = config.CurrentValue or false
 
             local btn = Instance.new("TextButton")
-            btn.Size = UDim2.new(1, 0, 0, 38)
+            btn.Size = UDim2.new(1, 0, 0, 44)
             btn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
             btn.BorderSizePixel = 0
             btn.Text = ""
             btn.AutoButtonColor = false
             btn.Parent = content
-            Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 7)
+            Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
             Instance.new("UIStroke", btn).Color = Color3.fromRGB(40, 40, 40)
 
             local label = Instance.new("TextLabel", btn)
-            label.Size = UDim2.new(1, -52, 1, 0)
-            label.Position = UDim2.new(0, 12, 0, 0)
+            label.Size = UDim2.new(1, -60, 1, 0)
+            label.Position = UDim2.new(0, 14, 0, 0)
             label.BackgroundTransparency = 1
             label.Text = config.Name or "Toggle"
-            label.TextColor3 = Color3.fromRGB(185, 185, 185)
-            label.TextSize = 11
+            label.TextColor3 = Color3.fromRGB(190, 190, 190)
+            label.TextSize = 13
             label.Font = Enum.Font.Gotham
             label.TextXAlignment = Enum.TextXAlignment.Left
 
             local pill = Instance.new("Frame", btn)
-            pill.Size = UDim2.new(0, 34, 0, 19)
-            pill.Position = UDim2.new(1, -46, 0.5, -9)
+            pill.Size = UDim2.new(0, 40, 0, 22)
+            pill.Position = UDim2.new(1, -54, 0.5, -11)
             pill.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
             pill.BorderSizePixel = 0
             Instance.new("UICorner", pill).CornerRadius = UDim.new(1, 0)
 
             local knob = Instance.new("Frame", pill)
-            knob.Size = UDim2.new(0, 13, 0, 13)
-            knob.Position = UDim2.new(0, 3, 0.5, -6)
+            knob.Size = UDim2.new(0, 16, 0, 16)
+            knob.Position = UDim2.new(0, 3, 0.5, -8)
             knob.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
             knob.BorderSizePixel = 0
             Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
@@ -434,7 +464,7 @@ function DevNgg:CreateWindow(config)
                     BackgroundColor3 = val and Color3.fromRGB(75, 195, 115) or Color3.fromRGB(45, 45, 45)
                 }):Play()
                 TweenService:Create(knob, TweenInfo.new(0.15), {
-                    Position = val and UDim2.new(0, 18, 0.5, -6) or UDim2.new(0, 3, 0.5, -6),
+                    Position = val and UDim2.new(0, 21, 0.5, -8) or UDim2.new(0, 3, 0.5, -8),
                     BackgroundColor3 = val and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(100, 100, 100)
                 }):Play()
                 if not silent and config.Callback then
@@ -456,16 +486,16 @@ function DevNgg:CreateWindow(config)
 
         function Tab:CreateButton(config)
             local btn = Instance.new("TextButton")
-            btn.Size = UDim2.new(1, 0, 0, 38)
+            btn.Size = UDim2.new(1, 0, 0, 44)
             btn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
             btn.BorderSizePixel = 0
             btn.Text = config.Name or "Button"
-            btn.TextColor3 = Color3.fromRGB(185, 185, 185)
-            btn.TextSize = 11
+            btn.TextColor3 = Color3.fromRGB(190, 190, 190)
+            btn.TextSize = 13
             btn.Font = Enum.Font.Gotham
             btn.AutoButtonColor = false
             btn.Parent = content
-            Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 7)
+            Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
             Instance.new("UIStroke", btn).Color = Color3.fromRGB(40, 40, 40)
 
             btn.MouseButton1Click:Connect(function()
@@ -485,6 +515,16 @@ function DevNgg:CreateWindow(config)
         end
 
         return Tab
+    end
+
+    function Window:LoadConfiguration()
+        local saved = loadConfig()
+        for flag, val in pairs(saved) do
+            local setter = toggleSetters[flag]
+            if setter and type(val) == "boolean" then
+                setter(val, false)
+            end
+        end
     end
 
     updateSize()
