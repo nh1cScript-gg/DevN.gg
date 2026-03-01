@@ -1,7 +1,7 @@
 -- DevN.gg GUI Library
 -- loader.lua
 -- Load with:
--- local DevNgg = loadstring(game:HttpGet('https://raw.githubusercontent.com/DevNgg/DevNgg/main/loader.lua'))()
+-- local DevNgg = https://raw.githubusercontent.com/nh1cScript-gg/DevN.gg/main/loader.lua
 
 local DevNgg = {}
 
