@@ -1,5 +1,5 @@
 -- DevN.gg GUI Library
--- loader.lua
+-- loader.lua (Xeno Fixed)
 
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -37,16 +37,24 @@ local function loadConfig()
     return (ok and result) or {}
 end
 
--- Safely parent a ScreenGui: PlayerGui first, CoreGui as fallback
+-- Xeno-compatible safe parent
 local function safeParent(gui)
+    -- Try CoreGui first (most reliable on Xeno)
     local ok = pcall(function()
+        gui.Parent = game:GetService("CoreGui")
+    end)
+    if ok and gui.Parent then return end
+
+    -- Fallback: gethui() — Xeno specific safe GUI container
+    ok = pcall(function()
+        gui.Parent = gethui()
+    end)
+    if ok and gui.Parent then return end
+
+    -- Fallback: PlayerGui
+    pcall(function()
         gui.Parent = playerGui
     end)
-    if not ok or not gui.Parent then
-        pcall(function()
-            gui.Parent = game:GetService("CoreGui")
-        end)
-    end
 end
 
 local mainFrame = nil
@@ -74,6 +82,7 @@ notifGui.Name = "DevNggNotif"
 notifGui.ResetOnSpawn = false
 notifGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 pcall(function() notifGui.DisplayOrder = 998 end)
+pcall(function() notifGui.IgnoreGuiInset = true end)
 safeParent(notifGui)
 
 local notifContainer = Instance.new("Frame")
@@ -187,7 +196,19 @@ function DevNgg:CreateWindow(config)
     screenGui.ResetOnSpawn = false
     screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     pcall(function() screenGui.DisplayOrder = 999 end)
+    pcall(function() screenGui.IgnoreGuiInset = true end)
     safeParent(screenGui)
+
+    -- Safety check: if GUI didn't parent, keep trying
+    if not screenGui.Parent then
+        task.spawn(function()
+            for i = 1, 10 do
+                task.wait(0.5)
+                safeParent(screenGui)
+                if screenGui.Parent then break end
+            end
+        end)
+    end
 
     local main = Instance.new("Frame")
     main.Name = "Main"
