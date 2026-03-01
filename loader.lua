@@ -232,8 +232,8 @@ function DevNgg:CreateWindow(config)
     -- Main frame
     local main = Instance.new("Frame", screenGui)
     main.Name = "Main"
-    main.Size = UDim2.new(0, 360, 0, 68)
-    main.Position = UDim2.new(0.5, -180, 0, 22)
+    main.Size = UDim2.new(0, 420, 0, 82)
+    main.Position = UDim2.new(0.5, -210, 0, 22)
     main.BackgroundColor3 = C.BG
     main.BorderSizePixel = 0
     main.ClipsDescendants = true
@@ -243,52 +243,44 @@ function DevNgg:CreateWindow(config)
 
     -- Header
     local header = Instance.new("Frame", main)
-    header.Size = UDim2.new(1, 0, 0, 64)
+    header.Size = UDim2.new(1, 0, 0, 76)
     header.BackgroundTransparency = 1
     header.BorderSizePixel = 0
     header.ZIndex = 2
 
-    -- Dot indicator (decorative, left edge)
-    local dot = Instance.new("Frame", header)
-    dot.Size = UDim2.new(0, 5, 0, 5)
-    dot.Position = UDim2.new(0, 14, 0.5, -2)
-    dot.BackgroundColor3 = C.ACCENT
-    dot.BorderSizePixel = 0
-    mkCorner(dot, 3)
-
     local titleLbl = Instance.new("TextLabel", header)
-    titleLbl.Size = UDim2.new(1, -100, 0, 22)
-    titleLbl.Position = UDim2.new(0, 26, 0, 12)
+    titleLbl.Size = UDim2.new(1, -110, 0, 26)
+    titleLbl.Position = UDim2.new(0, 16, 0, 12)
     titleLbl.BackgroundTransparency = 1
     titleLbl.Text = windowTitle
-    titleLbl.TextColor3 = C.ACCENT
-    titleLbl.TextSize = 16
+    titleLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+    titleLbl.TextSize = 20
     titleLbl.Font = Enum.Font.GothamBold
     titleLbl.TextXAlignment = Enum.TextXAlignment.Left
 
     local subLbl = Instance.new("TextLabel", header)
-    subLbl.Size = UDim2.new(1, -100, 0, 14)
-    subLbl.Position = UDim2.new(0, 26, 0, 38)
+    subLbl.Size = UDim2.new(1, -110, 0, 18)
+    subLbl.Position = UDim2.new(0, 16, 0, 42)
     subLbl.BackgroundTransparency = 1
     subLbl.Text = windowSub .. "  ·  " .. windowVer
-    subLbl.TextColor3 = C.TEXT
-    subLbl.TextSize = 11
+    subLbl.TextColor3 = Color3.fromRGB(180, 180, 180)
+    subLbl.TextSize = 13
     subLbl.Font = Enum.Font.GothamSemibold
     subLbl.TextXAlignment = Enum.TextXAlignment.Left
 
     -- Control buttons
     local function mkBtn(ox, sym)
         local b = Instance.new("TextButton", header)
-        b.Size = UDim2.new(0, 20, 0, 20)
-        b.Position = UDim2.new(1, ox, 0.5, -10)
+        b.Size = UDim2.new(0, 28, 0, 28)
+        b.Position = UDim2.new(1, ox, 0.5, -14)
         b.BackgroundColor3 = C.SURFACE2
         b.Text = sym
         b.TextColor3 = C.TEXT_DIM
-        b.TextSize = 12
+        b.TextSize = 15
         b.Font = Enum.Font.GothamBold
         b.BorderSizePixel = 0
         b.AutoButtonColor = false
-        mkCorner(b, 5)
+        mkCorner(b, 6)
         mkStroke(b, C.BORDER, 1)
         b.MouseEnter:Connect(function()
             tw(b, FAST, { TextColor3 = C.TEXT, BackgroundColor3 = C.BTN_HOV })
@@ -299,8 +291,8 @@ function DevNgg:CreateWindow(config)
         return b
     end
 
-    local closeBtn = mkBtn(-12, "×")
-    local minBtn   = mkBtn(-38, "−")
+    local closeBtn = mkBtn(-14, "×")
+    local minBtn   = mkBtn(-48, "−")
 
     closeBtn.MouseButton1Click:Connect(function()
         DevNgg:SetVisibility(false)
@@ -309,7 +301,7 @@ function DevNgg:CreateWindow(config)
     -- Separator
     local sep = Instance.new("Frame", main)
     sep.Size = UDim2.new(1, -24, 0, 1)
-    sep.Position = UDim2.new(0, 12, 0, 64)
+    sep.Position = UDim2.new(0, 12, 0, 76)
     sep.BackgroundColor3 = C.BORDER
     sep.BorderSizePixel = 0
     sep.Visible = false
@@ -317,8 +309,8 @@ function DevNgg:CreateWindow(config)
     -- Content
     local content = Instance.new("Frame", main)
     content.Name = "Content"
-    content.Size = UDim2.new(1, 0, 1, -72)
-    content.Position = UDim2.new(0, 0, 0, 72)
+    content.Size = UDim2.new(1, 0, 1, -84)
+    content.Position = UDim2.new(0, 0, 0, 84)
     content.BackgroundTransparency = 1
 
     local listLayout = Instance.new("UIListLayout", content)
@@ -336,8 +328,8 @@ function DevNgg:CreateWindow(config)
 
     local function updateSize()
         if minimized then return end
-        local h = 72 + listLayout.AbsoluteContentSize.Y + 18
-        tw(main, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Size = UDim2.new(0, 360, 0, h) })
+        local h = 84 + listLayout.AbsoluteContentSize.Y + 18
+        tw(main, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Size = UDim2.new(0, 420, 0, h) })
     end
     listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateSize)
 
@@ -347,8 +339,8 @@ function DevNgg:CreateWindow(config)
         sep.Visible = not minimized
         tw(main, TweenInfo.new(0.18, Enum.EasingStyle.Quint), {
             Size = minimized
-                and UDim2.new(0, 360, 0, 64)
-                or  UDim2.new(0, 360, 0, 72 + listLayout.AbsoluteContentSize.Y + 18)
+                and UDim2.new(0, 420, 0, 76)
+                or  UDim2.new(0, 420, 0, 84 + listLayout.AbsoluteContentSize.Y + 18)
         })
         minBtn.Text = minimized and "+" or "−"
     end)
@@ -436,7 +428,7 @@ function DevNgg:CreateWindow(config)
             local currentValue = cfg.CurrentValue or false
 
             local row = Instance.new("TextButton", content)
-            row.Size = UDim2.new(1, 0, 0, 40)
+            row.Size = UDim2.new(1, 0, 0, 46)
             row.BackgroundColor3 = C.SURFACE
             row.BorderSizePixel = 0
             row.Text = ""
@@ -450,24 +442,24 @@ function DevNgg:CreateWindow(config)
             lbl.BackgroundTransparency = 1
             lbl.Text = cfg.Name or "Toggle"
             lbl.TextColor3 = C.TEXT_MID
-            lbl.TextSize = 12
+            lbl.TextSize = 14
             lbl.Font = Enum.Font.Gotham
             lbl.TextXAlignment = Enum.TextXAlignment.Left
 
             local pill = Instance.new("Frame", row)
-            pill.Size = UDim2.new(0, 32, 0, 16)
-            pill.Position = UDim2.new(1, -43, 0.5, -8)
+            pill.Size = UDim2.new(0, 36, 0, 20)
+            pill.Position = UDim2.new(1, -50, 0.5, -10)
             pill.BackgroundColor3 = C.OFF_PILL
             pill.BorderSizePixel = 0
-            mkCorner(pill, 8)
+            mkCorner(pill, 10)
             mkStroke(pill, C.BORDER, 1)
 
             local knob = Instance.new("Frame", pill)
-            knob.Size = UDim2.new(0, 10, 0, 10)
-            knob.Position = UDim2.new(0, 3, 0.5, -5)
+            knob.Size = UDim2.new(0, 14, 0, 14)
+            knob.Position = UDim2.new(0, 3, 0.5, -7)
             knob.BackgroundColor3 = C.ACCENT_D
             knob.BorderSizePixel = 0
-            mkCorner(knob, 5)
+            mkCorner(knob, 7)
 
             local enabled = currentValue
 
@@ -479,12 +471,12 @@ function DevNgg:CreateWindow(config)
                 end
                 if val then
                     tw(pill, FAST, { BackgroundColor3 = C.ON_PILL })
-                    tw(knob, FAST, { Position = UDim2.new(0, 19, 0.5, -5), BackgroundColor3 = C.ON })
+                    tw(knob, FAST, { Position = UDim2.new(0, 19, 0.5, -7), BackgroundColor3 = C.ON })
                     tw(lbl,  FAST, { TextColor3 = C.TEXT })
                     tw(rs,   FAST, { Color = C.BORDER2 })
                 else
                     tw(pill, FAST, { BackgroundColor3 = C.OFF_PILL })
-                    tw(knob, FAST, { Position = UDim2.new(0, 3, 0.5, -5), BackgroundColor3 = C.ACCENT_D })
+                    tw(knob, FAST, { Position = UDim2.new(0, 3, 0.5, -7), BackgroundColor3 = C.ACCENT_D })
                     tw(lbl,  FAST, { TextColor3 = C.TEXT_MID })
                     tw(rs,   FAST, { Color = C.BORDER })
                 end
@@ -501,12 +493,12 @@ function DevNgg:CreateWindow(config)
 
         function Tab:CreateButton(cfg)
             local btn = Instance.new("TextButton", content)
-            btn.Size = UDim2.new(1, 0, 0, 40)
+            btn.Size = UDim2.new(1, 0, 0, 46)
             btn.BackgroundColor3 = C.SURFACE
             btn.BorderSizePixel = 0
             btn.Text = cfg.Name or "Button"
             btn.TextColor3 = C.TEXT_MID
-            btn.TextSize = 12
+            btn.TextSize = 14
             btn.Font = Enum.Font.Gotham
             btn.AutoButtonColor = false
             mkCorner(btn, 7)
