@@ -1,8 +1,6 @@
 -- DevN.gg GUI Library
 -- loader.lua
 
-local DevNgg = loadstring(game:HttpGet('https://raw.githubusercontent.com/nh1cScript-gg/DevNgg/main/loader.lua'))()
-
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
@@ -40,6 +38,8 @@ end
 
 local mainFrame = nil
 local guiVisible = true
+
+local DevNgg = {}
 
 function DevNgg:SetVisibility(val)
     guiVisible = val
@@ -98,7 +98,6 @@ function DevNgg:Notify(config)
     cardStroke.Thickness = 1
     cardStroke.Transparency = 1
 
-    -- Grey transparent accent bar on left
     local accent = Instance.new("Frame", card)
     accent.Size = UDim2.new(0, 3, 1, 0)
     accent.BackgroundColor3 = Color3.fromRGB(90, 90, 90)
@@ -127,7 +126,6 @@ function DevNgg:Notify(config)
     contentLbl.TextXAlignment = Enum.TextXAlignment.Left
     contentLbl.TextWrapped = true
 
-    -- Progress bar
     local progressBg = Instance.new("Frame", card)
     progressBg.Size = UDim2.new(1, 0, 0, 2)
     progressBg.Position = UDim2.new(0, 0, 1, -2)
@@ -139,11 +137,9 @@ function DevNgg:Notify(config)
     progressBar.BackgroundColor3 = Color3.fromRGB(90, 90, 90)
     progressBar.BorderSizePixel = 0
 
-    -- Fade in
     TweenService:Create(card, TweenInfo.new(0.3, Enum.EasingStyle.Quint), { BackgroundTransparency = 0 }):Play()
     TweenService:Create(cardStroke, TweenInfo.new(0.3), { Transparency = 0 }):Play()
 
-    -- Progress drain
     TweenService:Create(progressBar, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
         Size = UDim2.new(0, 0, 1, 0)
     }):Play()
