@@ -1,0 +1,1083 @@
+-- ╔══════════════════════════════════════════════════════════════╗
+-- ║           AniPixels Ultimate Auto Farm v5.2                 ║
+-- ║           Dragon Balls + Unit Hunter + Auto Merge            ║
+-- ║           by Dev N                                           ║
+-- ╚══════════════════════════════════════════════════════════════╝
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 1: LOAD UI LIBRARY
+-- ══════════════════════════════════════════════════════════════
+local DevNgg = loadstring(game:HttpGet(
+    'https://raw.githubusercontent.com/nh1cScript-gg/DevN.gg/main/loader.lua?t=' .. tostring(os.time())
+))()
+
+local Window = DevNgg:CreateWindow({
+    Name             = "🎮 AniPixels Ultimate Farm",
+    LoadingSubtitle  = "by Dev N",
+    Version          = "v5.2",
+    ToggleUIKeybind  = "K",
+    ConfigurationSaving = { Enabled = false },
+})
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 2: SERVICES
+-- ══════════════════════════════════════════════════════════════
+local Players           = game:GetService("Players")
+local TeleportService   = game:GetService("TeleportService")
+local HttpService       = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local LocalPlayer = Players.LocalPlayer
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 3: GLOBAL STATE
+-- All toggleable states and user inputs stored here
+-- ══════════════════════════════════════════════════════════════
+
+-- Dragon Ball
+local dragonBallAutoCollect = false
+local dragonBallAutoHop     = false
+local dragonBallAutoWish    = false
+local isCollecting          = false
+local isHopping             = false
+
+-- Threads
+local collectLoopThread     = nil
+local mergeLoopThread       = nil
+local autoHuntThread        = nil
+
+-- Wish
+local wishTargetUnit        = ""
+
+-- Merge
+local mergeTargetUnit       = ""
+local autoMergeEnabled      = false
+
+-- Quick Teleport (manual, one-time)
+local quickTeleportTarget   = ""
+local quickTeleportSparking = false
+
+-- Auto Hunt (continuous loop with server hop)
+local autoHuntTargetUnits   = {}     -- list of unit names to hunt
+local autoHuntTargetUnit    = ""     -- current text input buffer
+local autoHuntFindSparking  = true   -- also stop on any sparking unit
+local autoHuntEnabled       = false  -- master toggle
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 4: VALID UNIT LIST
+-- Full list of all capturable units from RS.Doodles
+-- Used to filter out NPCs, bosses, and decorations
+-- ══════════════════════════════════════════════════════════════
+local VALID_UNITS = {
+    ["Aizen"]=true,["Akaza"]=true,["Aki"]=true,["Al"]=true,["All For One"]=true,
+    ["All Might"]=true,["Anbu"]=true,["Android 17"]=true,["Android 18"]=true,
+    ["Android 19"]=true,["Arima"]=true,["Armstrong"]=true,["Arthur"]=true,
+    ["Astto"]=true,["Awakened Mahito"]=true,["Baek Yonhoo"]=true,["Baraggan"]=true,
+    ["Beru"]=true,["Blackstar"]=true,["Boros"]=true,["Boruto (Timeskip)"]=true,
+    ["Broly (Super)"]=true,["Brook"]=true,["CandyVegito"]=true,["Carrot"]=true,
+    ["Cell Jr"]=true,["Cha Hae"]=true,["Chad"]=true,["Chakra Puppet"]=true,
+    ["Choji"]=true,["Chopper"]=true,["Chrollo"]=true,["Cooler Final Form"]=true,
+    ["CrazyDiamond"]=true,["Dabi"]=true,["Darkness Devil"]=true,["Death The Kid"]=true,
+    ["Denji"]=true,["Doppio"]=true,["Dr Gero"]=true,["Ed"]=true,["Escanor"]=true,
+    ["Eto"]=true,["Fat Janemba"]=true,["Final Form Muzan"]=true,["Frankie"]=true,
+    ["Franklin"]=true,["Frieren"]=true,["Frieza Final Form"]=true,
+    ["Fusion Zamasu (Corrupted)"]=true,["Future Gohan"]=true,["Future Trunks"]=true,
+    ["Future Trunks (Base)"]=true,["Giyu"]=true,["Gluttony"]=true,["Gogeta (Fat)"]=true,
+    ["Gogeta Blue"]=true,["Gohan (Super Saiyan 2)"]=true,["Gojo"]=true,
+    ["Gojo (Legs)"]=true,["Gojo (Shinjuku)"]=true,["Gok (Base)"]=true,
+    ["Goku (Super Saiyan)"]=true,["Goku Black (Rose)"]=true,["Goku SS3"]=true,
+    ["Golden Experience"]=true,["Golden Experience (Requiem)"]=true,["Gon"]=true,
+    ["Gon (End)"]=true,["Goots"]=true,["Granz"]=true,["Griff"]=true,["Grimmjow"]=true,
+    ["Grimmjow (Resurrecion)"]=true,["GunGirl"]=true,["Gyutaro"]=true,["HGreen"]=true,
+    ["Hakari"]=true,["Halibel"]=true,["Hanami"]=true,["HandStrong"]=true,
+    ["Heian Era Sukuna"]=true,["HermitPurple"]=true,["Hero of Hell"]=true,
+    ["Hideyoshi"]=true,["Higuruma"]=true,["Hinata"]=true,["Hinawa"]=true,
+    ["Hisoka"]=true,["Ichigo (VastoLorde)"]=true,["Ichigo Hollowfied"]=true,
+    ["Igris"]=true,["Illumi"]=true,["Imperfect Cell"]=true,["Ino"]=true,["Iris"]=true,
+    ["Iron"]=true,["Iruka"]=true,["Issei"]=true,["Itach"]=true,["Jimbei"]=true,
+    ["Jogo"]=true,["Jotaro"]=true,["JudgeSpirit"]=true,["Junpei"]=true,["Juuzou"]=true,
+    ["Kaido"]=true,["KaidoDragon"]=true,["Kakash"]=true,["Kaneki"]=true,
+    ["Kaneki-Kakuja"]=true,["Kashimo"]=true,["Katana Man"]=true,["Kiba"]=true,
+    ["Kid"]=true,["Kid Buu"]=true,["KidGaar"]=true,["Killer"]=true,["Killer Queen"]=true,
+    ["Killua"]=true,["Killua (Godspeed)"]=true,["King"]=true,["King Crimson"]=true,
+    ["Kira"]=true,["Kisuke"]=true,["Kokushibo"]=true,["Krillin"]=true,["Krona"]=true,
+    ["Kurapika"]=true,["Kusukabe"]=true,["Kyubey"]=true,["Kyuubi"]=true,["Law"]=true,
+    ["Leorio"]=true,["LingYao"]=true,["Lst"]=true,["LuBu"]=true,["Luff"]=true,
+    ["Luffy (Gear 4)"]=true,["Luffy (Gear 5)"]=true,["Madara Ten Tails"]=true,
+    ["Made In Heaven"]=true,["MagiciansRed"]=true,["Mahito"]=true,["Mahoraga"]=true,
+    ["Maka"]=true,["Maki"]=true,["Maki Zenin"]=true,["Makima"]=true,["Masked Tob"]=true,
+    ["Mechamaru"]=true,["Medusa"]=true,["Megumi"]=true,["Meliodas"]=true,
+    ["Might Guy (Ninth Gate)"]=true,["Miwa"]=true,["Mizuki"]=true,["Momo"]=true,
+    ["Monster Garou"]=true,["Nami"]=true,["Nanami"]=true,["Naru (Kid)"]=true,
+    ["Naru (Sign)"]=true,["Neji"]=true,["Nel"]=true,["Nnoitra"]=true,["Nobara"]=true,
+    ["Nobunaga"]=true,["Noolle"]=true,["Obito Ten Tails"]=true,["Okarun"]=true,
+    ["Orihime"]=true,["Owl"]=true,["Panda"]=true,["Perfect Cell"]=true,["Piccolo"]=true,
+    ["Pikkon"]=true,["Poseidon"]=true,["Power"]=true,["Pride"]=true,["PuppetGuy"]=true,
+    ["Purple Haze"]=true,["Queen"]=true,["RealDIO"]=true,["RealJojo"]=true,
+    ["Reinhard"]=true,["Rengoku"]=true,["Renji"]=true,["Rimuru"]=true,["Riza"]=true,
+    ["Rize"]=true,["Robin"]=true,["Rock Lee"]=true,["Roy"]=true,["Rukia"]=true,
+    ["Ryuma"]=true,["Saitama"]=true,["Sakur"]=true,["Sanji"]=true,["Sasaki"]=true,
+    ["Sasu"]=true,["Sasuke (Curse Mark 2)"]=true,["Scar"]=true,["Shadow DIO"]=true,
+    ["Shanks"]=true,["Shield Hero"]=true,["Shigaraki"]=true,["Shika"]=true,
+    ["Shino"]=true,["Shinobu"]=true,["Shinra"]=true,["Shizuku"]=true,
+    ["SilverChariot"]=true,["SilverChariot (Requiem)"]=true,["Soul"]=true,
+    ["SpearGirl"]=true,["StaffGirl"]=true,["Star Platinum"]=true,["Starrk"]=true,
+    ["Subaru"]=true,["Sukuna"]=true,["Sukuna (Shinjuku)"]=true,["Sung Jinwoo"]=true,
+    ["Super Gogeta"]=true,["Super Janemba"]=true,["Super Perfect Cell"]=true,
+    ["Super Vegito"]=true,["SwordGirl"]=true,["SwordGuy"]=true,["Takako"]=true,
+    ["Tamaki"]=true,["Tanjiro"]=true,["Tatsumaki"]=true,["Temari"]=true,
+    ["TenTen"]=true,["Tengen"]=true,["The World"]=true,["TheFool"]=true,["Thor"]=true,
+    ["TimeGirl"]=true,["Todo"]=true,["Toji"]=true,["Tokito"]=true,["Touka"]=true,
+    ["Trunks (Spirit Bomb Sword)"]=true,["Tsukiyama"]=true,["Turles"]=true,["Tusk"]=true,
+    ["Ulquiorra"]=true,["Ulquiorra (Murcielago)"]=true,["Ulquiorra (Segunda)"]=true,
+    ["Ulti"]=true,["Uraume"]=true,["Uryu"]=true,["Usopp"]=true,["Vegeta (Majin)"]=true,
+    ["Vegeta (Super Saiyan)"]=true,["Vegito Blue"]=true,["Wandering Soul"]=true,
+    ["Wano Luffy"]=true,["Wolf Beast"]=true,["WonderU"]=true,["Wrath"]=true,["X"]=true,
+    ["Yamato"]=true,["Yammy"]=true,["Yomi"]=true,["Yoogi"]=true,["Yoomi"]=true,
+    ["Yoono"]=true,["Yoriichi"]=true,["Yorozu"]=true,["Young Gojo"]=true,["Yuji"]=true,
+    ["Yuta"]=true,["Zeeno"]=true,["Zeeno23"]=true,["Zomarie"]=true,["Zoono"]=true,
+    ["Zoro"]=true,
+}
+
+-- Tier prefixes used in unit names
+local TIER_PREFIXES = {
+    "Titan Sparking ", "Mega Sparking ", "Giant Sparking ", "Sparking ",
+    "Titan ", "Mega ", "Giant ",
+}
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 5: UNIT HELPER FUNCTIONS
+-- ══════════════════════════════════════════════════════════════
+
+-- Returns true if the unit name contains "Sparking"
+local function isSparking(unitName)
+    return unitName:find("Sparking") ~= nil
+end
+
+-- Returns true if unit exists in VALID_UNITS (strips tier prefix first)
+local function isValidUnit(unitName)
+    if VALID_UNITS[unitName] then return true end
+    for _, prefix in ipairs(TIER_PREFIXES) do
+        if unitName:sub(1, #prefix) == prefix then
+            if VALID_UNITS[unitName:sub(#prefix + 1)] then return true end
+        end
+    end
+    return false
+end
+
+-- Scans workspace.Campaign for a specific unit and/or any sparking unit
+-- specificUnit: partial name to match, "" = skip specific search
+-- findSparking: if true, also returns first sparking unit found
+-- Returns: (unitPart, reason) where reason = "specific" | "sparking" | nil
+local function scanCampaign(specificUnit, findSparking)
+    local campaign = workspace:FindFirstChild("Campaign")
+    if not campaign then return nil, nil end
+
+    local specificResult = nil
+    local sparkingResult = nil
+
+    for _, part in ipairs(campaign:GetDescendants()) do
+        if not part:IsA("Part") then continue end
+        if not isValidUnit(part.Name) then continue end
+
+        local nameLower = part.Name:lower()
+
+        -- Check specific unit match
+        if specificUnit and specificUnit ~= "" then
+            if nameLower:find(specificUnit:lower(), 1, true) then
+                specificResult = part
+            end
+        end
+
+        -- Check for any sparking unit
+        if findSparking and isSparking(part.Name) then
+            sparkingResult = sparkingResult or part
+        end
+
+        if specificResult and (not findSparking or sparkingResult) then break end
+    end
+
+    if specificResult then return specificResult, "specific" end
+    if sparkingResult then return sparkingResult, "sparking" end
+    return nil, nil
+end
+
+-- Simple single-unit finder for manual quick teleport
+local function findUnitOnMap(unitName, sparkingOnly)
+    local campaign = workspace:FindFirstChild("Campaign")
+    if not campaign then return nil end
+    local nameLower = unitName:lower()
+    for _, part in ipairs(campaign:GetDescendants()) do
+        if not part:IsA("Part") then continue end
+        if not part.Name:lower():find(nameLower, 1, true) then continue end
+        if not isValidUnit(part.Name) then continue end
+        if sparkingOnly and not isSparking(part.Name) then continue end
+        return part
+    end
+    return nil
+end
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 6: PLAYER / CHARACTER HELPERS
+-- ══════════════════════════════════════════════════════════════
+
+local function getHumanoidRootPart()
+    return LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+end
+
+local function getWorldPosition(obj)
+    if obj:IsA("BasePart") then return obj.Position end
+    if obj:IsA("Model") then
+        local root = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+        return root and root.Position
+    end
+    return nil
+end
+
+local function teleportToPosition(position)
+    local hrp = getHumanoidRootPart()
+    if not hrp or not position then return end
+    hrp.CFrame = CFrame.new(position + Vector3.new(math.random(-2, 2), 5, math.random(2, 4)))
+end
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 7: DRAGON BALL HELPERS
+-- ══════════════════════════════════════════════════════════════
+
+local function isDragonBall(obj)
+    if not obj:IsA("BasePart") then return false end
+    if obj.Parent and obj.Parent:FindFirstChildOfClass("Humanoid") then return false end
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr.Character and obj:IsDescendantOf(plr.Character) then return false end
+    end
+    local n = obj.Name:lower()
+    return n == "dragonball" or n == "dragon_ball" or n == "dball"
+        or n:match("^dragonball%d$") or n:match("^dragon_ball%d$")
+        or n == "dragon ball"        or n:match("^dragon ball %d$")
+end
+
+local function getAllDragonBalls()
+    local balls = {}
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if isDragonBall(obj) then table.insert(balls, obj) end
+    end
+    return balls
+end
+
+local function dragonBallsExist()
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if isDragonBall(obj) then return true end
+    end
+    return false
+end
+
+local function collectDragonBall(ball)
+    local hrp = getHumanoidRootPart()
+    local pos = getWorldPosition(ball)
+    if not hrp or not pos then return end
+    hrp.CFrame = CFrame.new(pos + Vector3.new(0, 2, 0))
+    task.wait(0.05)
+    local prompt = ball:FindFirstChildOfClass("ProximityPrompt")
+                or ball.Parent:FindFirstChildOfClass("ProximityPrompt")
+    if prompt then fireproximityprompt(prompt) end
+end
+
+local function collectAllDragonBalls()
+    local balls = getAllDragonBalls()
+    if #balls == 0 then
+        DevNgg:Notify({ Title = "🐉 Dragon Ball", Content = "No Dragon Balls found.", Duration = 3 })
+        if dragonBallAutoHop then task.spawn(serverHop) end
+        return false
+    end
+    local finished, total = 0, #balls
+    for _, ball in ipairs(balls) do
+        task.spawn(function()
+            collectDragonBall(ball)
+            finished += 1
+        end)
+    end
+    while finished < total do task.wait(0.03) end
+    DevNgg:Notify({ Title = "🐉 Collected!", Content = total .. " Dragon Ball(s) collected!", Duration = 4 })
+    return true
+end
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 8: SERVER HOP
+-- ══════════════════════════════════════════════════════════════
+
+local function fetchServerPage(placeId, cursor)
+    local url = "https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=Asc&limit=100"
+    if cursor then url = url .. "&cursor=" .. cursor end
+    local success, result = pcall(function()
+        return HttpService:JSONDecode(game:HttpGet(url))
+    end)
+    if success and result and result.data then
+        return result.data, result.nextPageCursor
+    end
+    return nil, nil
+end
+
+function serverHop(noCheck)
+    if isHopping then return end
+
+    if not noCheck then
+        for _ = 1, 2 do
+            if dragonBallsExist() then
+                DevNgg:Notify({ Title = "🐉 Balls Found!", Content = "Cancelling hop.", Duration = 3 })
+                if dragonBallAutoCollect then task.spawn(collectAllDragonBalls) end
+                return
+            end
+            task.wait(0.5)
+        end
+    end
+
+    isHopping   = true
+    isCollecting = false
+    DevNgg:Notify({ Title = "🔀 Server Hop", Content = "Searching for a server...", Duration = 2 })
+
+    local placeId      = game.PlaceId
+    local currentJobId = game.JobId
+    local teleported   = false
+
+    local function tryTeleport(serverId)
+        if teleported then return end
+        teleported = true
+        DevNgg:Notify({ Title = "🔀 Hopping!", Content = "Teleporting to new server!", Duration = 2 })
+        TeleportService:TeleportToPlaceInstance(placeId, serverId, LocalPlayer)
+    end
+
+    local function isServerValid(server)
+        return server.id ~= currentJobId and server.playing < server.maxPlayers
+    end
+
+    local firstPageData, nextCursor = fetchServerPage(placeId, nil)
+    if not firstPageData then
+        DevNgg:Notify({ Title = "❌ Hop Failed", Content = "Retrying in 5s...", Duration = 3 })
+        isHopping = false
+        task.wait(5)
+        serverHop(noCheck)
+        return
+    end
+
+    for _, server in ipairs(firstPageData) do
+        if isServerValid(server) then
+            tryTeleport(server.id)
+            isHopping = false
+            return
+        end
+    end
+
+    if not nextCursor then
+        DevNgg:Notify({ Title = "❌ No Server Found", Content = "Retrying in 10s...", Duration = 4 })
+        isHopping = false
+        task.wait(10)
+        serverHop(noCheck)
+        return
+    end
+
+    local activeTasks, allTasksDone = 0, false
+
+    local function fetchAndChain(cursor)
+        if teleported then return end
+        activeTasks += 1
+        task.spawn(function()
+            local data, newCursor = fetchServerPage(placeId, cursor)
+            if data and not teleported then
+                for _, server in ipairs(data) do
+                    if isServerValid(server) then tryTeleport(server.id) break end
+                end
+                if newCursor and not teleported then fetchAndChain(newCursor) end
+            end
+            activeTasks -= 1
+            if activeTasks == 0 then allTasksDone = true end
+        end)
+    end
+
+    fetchAndChain(nextCursor)
+
+    local elapsed = 0
+    while not teleported and not allTasksDone and elapsed < 15 do
+        task.wait(0.03)
+        elapsed += 0.03
+    end
+
+    if not teleported then
+        DevNgg:Notify({ Title = "❌ No Server Found", Content = "Retrying in 10s...", Duration = 4 })
+        task.wait(10)
+        isHopping = false
+        serverHop(noCheck)
+    end
+
+    isHopping = false
+end
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 9: AUTO HUNT LOOP
+-- Loops through the hunt list, hops servers until one is found
+-- ══════════════════════════════════════════════════════════════
+local function startAutoHuntLoop()
+    autoHuntThread = task.spawn(function()
+        task.wait(3) -- wait for map to load on new server
+
+        while autoHuntEnabled do
+            local foundUnit   = nil
+            local foundReason = nil
+
+            -- Check each unit in the hunt list one by one
+            for _, unitName in ipairs(autoHuntTargetUnits) do
+                local result, reason = scanCampaign(unitName, false)
+                if result then
+                    foundUnit   = result
+                    foundReason = "specific"
+                    break
+                end
+            end
+
+            -- If no specific unit found, check for any sparking unit
+            if not foundUnit and autoHuntFindSparking then
+                local result, reason = scanCampaign("", true)
+                if result then
+                    foundUnit   = result
+                    foundReason = "sparking"
+                end
+            end
+
+            if foundUnit then
+                -- Found! Teleport and stop the loop
+                teleportToPosition(foundUnit.Position)
+
+                if foundReason == "specific" then
+                    DevNgg:Notify({
+                        Title   = "✅ Found: " .. foundUnit.Name,
+                        Content = "Unit from your list!" .. (isSparking(foundUnit.Name) and " ⚡" or ""),
+                        Duration = 5,
+                    })
+                elseif foundReason == "sparking" then
+                    DevNgg:Notify({
+                        Title   = "⚡ Sparking Found: " .. foundUnit.Name,
+                        Content = "Sparking unit on this server!",
+                        Duration = 5,
+                    })
+                end
+
+                autoHuntEnabled = false
+                return
+
+            else
+                -- Nothing found on this server, hop to the next
+                DevNgg:Notify({
+                    Title   = "❌ Nothing Found",
+                    Content = "Hopping to next server...",
+                    Duration = 3,
+                })
+                serverHop(true)
+                task.wait(6) -- wait for new server map to fully load
+            end
+
+            task.wait(1)
+        end
+    end)
+end
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 10: AUTO WISH (SHENRON)
+-- ══════════════════════════════════════════════════════════════
+local Events = ReplicatedStorage:WaitForChild("Events")
+
+Events.UpdateDragonBallBackpack.OnClientEvent:Connect(function(count)
+    if not dragonBallAutoWish then return end
+    if count >= 7 and not isCollecting then
+        isCollecting = true
+        task.wait(0.2)
+        Events.SummonShenron:FireServer()
+        DevNgg:Notify({ Title = "🐉 Summoning Shenron!", Content = "All 7 balls collected!", Duration = 3 })
+    end
+end)
+
+Events.ShenronWishes.OnClientEvent:Connect(function()
+    if not dragonBallAutoWish then return end
+    if wishTargetUnit == "" then
+        DevNgg:Notify({ Title = "⚠️ No Wish Target", Content = "Set a unit in the Shenron tab!", Duration = 3 })
+        isCollecting = false
+        return
+    end
+    task.wait(0.2)
+    Events.ClaimWish:FireServer("SparkingWish", { selectedCharacter = wishTargetUnit })
+    DevNgg:Notify({ Title = "✨ Wish Granted!", Content = "Wished for: " .. wishTargetUnit, Duration = 3 })
+    isCollecting = false
+    task.wait(0.5)
+    if dragonBallAutoHop then task.spawn(serverHop) end
+end)
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 11: AUTO MERGE
+-- ══════════════════════════════════════════════════════════════
+local function performMerge()
+    local doodleInv = LocalPlayer:FindFirstChild("DoodleInv")
+    if not doodleInv then return end
+
+    local crushinator = workspace:FindFirstChild("Map")
+        and workspace.Map:FindFirstChild("Lab")
+        and workspace.Map.Lab:FindFirstChild("Crushinator")
+    if not crushinator then
+        DevNgg:Notify({ Title = "❌ Merge Failed", Content = "Crushinator not found!", Duration = 3 })
+        return
+    end
+
+    local mergePrompt = crushinator:FindFirstChild("Activate")
+        and crushinator.Activate:FindFirstChildOfClass("ProximityPrompt")
+    if not mergePrompt then
+        DevNgg:Notify({ Title = "❌ Merge Failed", Content = "Merge prompt not found!", Duration = 3 })
+        return
+    end
+
+    local unitToMerge = nil
+
+    if mergeTargetUnit ~= "" then
+        local unitEntry = doodleInv:FindFirstChild(mergeTargetUnit)
+        if unitEntry and unitEntry.Value >= 4 then
+            unitToMerge = mergeTargetUnit
+        else
+            DevNgg:Notify({
+                Title   = "⚠️ Not Enough Copies",
+                Content = mergeTargetUnit .. " — Have: " .. (unitEntry and unitEntry.Value or 0) .. "/4",
+                Duration = 3,
+            })
+            return
+        end
+    else
+        for _, entry in ipairs(doodleInv:GetChildren()) do
+            if entry.Value >= 4 then
+                unitToMerge = entry.Name
+                break
+            end
+        end
+        if not unitToMerge then
+            DevNgg:Notify({ Title = "⚠️ Nothing to Merge", Content = "No unit with 4+ copies found.", Duration = 3 })
+            return
+        end
+    end
+
+    local slotMapping = { ["1"] = unitToMerge, ["2"] = unitToMerge, ["3"] = unitToMerge, ["4"] = unitToMerge }
+    Events.SquadUpdate:FireServer(slotMapping)
+    task.wait(0.5)
+    fireproximityprompt(mergePrompt)
+    DevNgg:Notify({ Title = "⚗️ Merging!", Content = "Merging 4x " .. unitToMerge, Duration = 3 })
+    task.wait(4)
+end
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 12: MAIN BACKGROUND LOOPS
+-- ══════════════════════════════════════════════════════════════
+
+local function startCollectLoop()
+    collectLoopThread = task.spawn(function()
+        task.wait(3)
+        while dragonBallAutoCollect do
+            if not isCollecting and not isHopping then
+                if #getAllDragonBalls() > 0 then
+                    collectAllDragonBalls()
+                else
+                    DevNgg:Notify({ Title = "❌ No Balls Found", Content = "Hopping server...", Duration = 2 })
+                    if dragonBallAutoHop then serverHop() end
+                end
+            end
+            task.wait(1)
+        end
+    end)
+end
+
+local function startMergeLoop()
+    mergeLoopThread = task.spawn(function()
+        while autoMergeEnabled do
+            performMerge()
+            task.wait(1)
+        end
+    end)
+end
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 13: CONFIG SAVE / LOAD
+-- ══════════════════════════════════════════════════════════════
+
+local function saveConfig()
+    pcall(function()
+        if not isfolder("AniPixels") then makefolder("AniPixels") end
+        writefile("AniPixels/AutoFarm.json", HttpService:JSONEncode({
+            AutoCollect = dragonBallAutoCollect,
+            AutoHop     = dragonBallAutoHop,
+            WishTarget  = wishTargetUnit,
+        }))
+    end)
+end
+
+local function getSavedConfigs()
+    local list = {}
+    pcall(function()
+        if isfolder("AniPixels/Configs") then
+            for _, filePath in ipairs(listfiles("AniPixels/Configs")) do
+                local name = filePath:match("([^/\\]+)%.json$")
+                if name then table.insert(list, name) end
+            end
+        end
+    end)
+    return list
+end
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 14: UI — TAB 1: 🐉 Dragon Ball
+-- ══════════════════════════════════════════════════════════════
+local DragonBallTab = Window:CreateTab("🐉 Dragon Ball", nil)
+
+DragonBallTab:CreateSection("Auto Collect Settings")
+
+DragonBallTab:CreateToggle({
+    Name         = "⚡ Auto Collect Dragon Balls",
+    CurrentValue = false,
+    Flag         = "AutoCollect",
+    Callback     = function(enabled)
+        dragonBallAutoCollect = enabled
+        if enabled then
+            DevNgg:Notify({ Title = "⚡ Auto Collect ON", Content = "Collecting dragon balls!", Duration = 3 })
+            startCollectLoop()
+        else
+            DevNgg:Notify({ Title = "⚡ Auto Collect OFF", Content = "Stopped.", Duration = 3 })
+            if collectLoopThread then task.cancel(collectLoopThread) collectLoopThread = nil end
+        end
+        saveConfig()
+    end,
+})
+
+DragonBallTab:CreateToggle({
+    Name         = "🔀 Auto Server Hop (No Balls)",
+    CurrentValue = false,
+    Flag         = "AutoHop",
+    Callback     = function(enabled)
+        dragonBallAutoHop = enabled
+        DevNgg:Notify({
+            Title   = enabled and "🔀 Auto Hop ON" or "🔀 Auto Hop OFF",
+            Content = enabled and "Will hop when no Dragon Balls found." or "Disabled.",
+            Duration = 3,
+        })
+        saveConfig()
+    end,
+})
+
+DragonBallTab:CreateSection("Manual Controls")
+
+DragonBallTab:CreateButton({
+    Name     = "🔀 Server Hop Now",
+    Callback = function() task.spawn(serverHop) end,
+})
+
+DragonBallTab:CreateButton({
+    Name     = "🐉 Collect All Now",
+    Callback = function() task.spawn(collectAllDragonBalls) end,
+})
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 15: UI — TAB 2: ✨ Shenron Wish
+-- ══════════════════════════════════════════════════════════════
+local WishTab = Window:CreateTab("✨ Shenron Wish", nil)
+
+WishTab:CreateSection("Wish Configuration")
+
+WishTab:CreateTextInput({
+    Name        = "Unit to Wish For",
+    Placeholder = "Exact name e.g. Titan Sparking Zoono",
+    Default     = "",
+    Callback    = function(text)
+        wishTargetUnit = text
+        DevNgg:Notify({ Title = "✨ Wish Target Set", Content = text, Duration = 2 })
+        saveConfig()
+    end,
+})
+
+WishTab:CreateButton({
+    Name     = "🔍 List All Titan Sparking Units (F9)",
+    Callback = function()
+        local doodles = ReplicatedStorage:WaitForChild("Doodles")
+        local found = {}
+        for _, doodle in ipairs(doodles:GetChildren()) do
+            if doodle.Name:find("Titan Sparking") then
+                table.insert(found, doodle.Name)
+            end
+        end
+        if #found == 0 then
+            DevNgg:Notify({ Title = "❌ None Found", Content = "No Titan Sparking units in RS.Doodles.", Duration = 3 })
+        else
+            print("=== TITAN SPARKING UNITS (" .. #found .. ") ===")
+            for _, name in ipairs(found) do print(name) end
+            DevNgg:Notify({ Title = "✅ Found " .. #found .. " Units", Content = "Check console (F9)!", Duration = 5 })
+        end
+    end,
+})
+
+WishTab:CreateSection("Auto Wish")
+
+WishTab:CreateToggle({
+    Name         = "✨ Auto Wish on 7 Balls",
+    CurrentValue = false,
+    Flag         = "AutoWish",
+    Callback     = function(enabled)
+        if enabled and wishTargetUnit == "" then
+            DevNgg:Notify({ Title = "⚠️ No Target Set!", Content = "Enter a unit name first!", Duration = 3 })
+            return
+        end
+        dragonBallAutoWish = enabled
+        DevNgg:Notify({
+            Title   = enabled and "✨ Auto Wish ON" or "✨ Auto Wish OFF",
+            Content = enabled and ("Wishing for: " .. wishTargetUnit) or "Disabled.",
+            Duration = 3,
+        })
+    end,
+})
+
+WishTab:CreateButton({
+    Name     = "✨ Wish Now (Manual)",
+    Callback = function()
+        if wishTargetUnit == "" then
+            DevNgg:Notify({ Title = "⚠️ No Target!", Content = "Set a unit name first!", Duration = 3 })
+            return
+        end
+        Events.ClaimWish:FireServer("SparkingWish", { selectedCharacter = wishTargetUnit })
+        DevNgg:Notify({ Title = "✨ Wish Fired!", Content = wishTargetUnit, Duration = 3 })
+    end,
+})
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 16: UI — TAB 3: 🎯 Hunt
+-- ══════════════════════════════════════════════════════════════
+local HuntTab = Window:CreateTab("🎯 Hunt", nil)
+
+-- ── Quick Teleport ───────────────────────────────────────────
+HuntTab:CreateSection("Quick Teleport (Manual, One-Time)")
+
+HuntTab:CreateTextInput({
+    Name        = "Unit Name",
+    Placeholder = "e.g. Zoono, Makima, Hakari... (partial ok)",
+    Default     = "",
+    Callback    = function(text)
+        if text ~= "" then
+            quickTeleportTarget = text
+            DevNgg:Notify({ Title = "📍 Target Set", Content = text, Duration = 2 })
+        end
+    end,
+})
+
+HuntTab:CreateToggle({
+    Name         = "⚡ Sparking Only (Quick Teleport)",
+    CurrentValue = false,
+    Flag         = "QuickSparkingOnly",
+    Callback     = function(enabled)
+        quickTeleportSparking = enabled
+        DevNgg:Notify({
+            Title   = enabled and "⚡ Sparking Only ON" or "⚡ Sparking Only OFF",
+            Content = enabled and "Only teleports to Sparking+ units." or "All tiers allowed.",
+            Duration = 3,
+        })
+    end,
+})
+
+HuntTab:CreateButton({
+    Name     = "📍 Teleport Now",
+    Callback = function()
+        if quickTeleportTarget == "" then
+            DevNgg:Notify({ Title = "⚠️ No Target", Content = "Type a unit name first!", Duration = 3 })
+            return
+        end
+        local found = findUnitOnMap(quickTeleportTarget, quickTeleportSparking)
+        if found then
+            teleportToPosition(found.Position)
+            DevNgg:Notify({
+                Title   = "📍 Teleported!",
+                Content = found.Name .. (isSparking(found.Name) and " ⚡" or ""),
+                Duration = 3,
+            })
+        else
+            DevNgg:Notify({ Title = "❌ Not Found", Content = '"' .. quickTeleportTarget .. '" not on this map.', Duration = 3 })
+        end
+    end,
+})
+
+HuntTab:CreateButton({
+    Name     = "📋 List All Units on Map (F9)",
+    Callback = function()
+        local campaign = workspace:FindFirstChild("Campaign")
+        if not campaign then
+            DevNgg:Notify({ Title = "❌ Error", Content = "Campaign folder not found!", Duration = 3 })
+            return
+        end
+        local seen, count = {}, 0
+        print("=== UNITS CURRENTLY ON MAP ===")
+        for _, part in ipairs(campaign:GetDescendants()) do
+            if part:IsA("Part") and isValidUnit(part.Name) and not seen[part.Name] then
+                seen[part.Name] = true
+                count += 1
+                print((isSparking(part.Name) and "⚡ " or "   ") .. part.Name)
+            end
+        end
+        print("Total: " .. count .. " units")
+        DevNgg:Notify({ Title = "📋 " .. count .. " Units on Map", Content = "Check console (F9)!", Duration = 4 })
+    end,
+})
+
+-- ── Auto Hunt + Server Hop ───────────────────────────────────
+HuntTab:CreateSection("Auto Hunt + Server Hop (Unit List)")
+
+HuntTab:CreateTextInput({
+    Name        = "Add Unit to Hunt List",
+    Placeholder = "e.g. Zoono, Makima... (one at a time)",
+    Default     = "",
+    Callback    = function(text)
+        autoHuntTargetUnit = text
+    end,
+})
+
+HuntTab:CreateButton({
+    Name     = "➕ Add Unit to List",
+    Callback = function()
+        if autoHuntTargetUnit == "" then
+            DevNgg:Notify({ Title = "⚠️ Empty!", Content = "Type a unit name first!", Duration = 3 })
+            return
+        end
+        table.insert(autoHuntTargetUnits, autoHuntTargetUnit)
+        DevNgg:Notify({
+            Title   = "➕ Added: " .. autoHuntTargetUnit,
+            Content = "List total: " .. #autoHuntTargetUnits .. " unit(s)",
+            Duration = 3,
+        })
+        autoHuntTargetUnit = ""
+    end,
+})
+
+HuntTab:CreateButton({
+    Name     = "📋 Show Hunt List (F9)",
+    Callback = function()
+        if #autoHuntTargetUnits == 0 then
+            DevNgg:Notify({ Title = "📋 Hunt List", Content = "Empty! Add units above.", Duration = 3 })
+            return
+        end
+        print("=== HUNT LIST (" .. #autoHuntTargetUnits .. ") ===")
+        for i, name in ipairs(autoHuntTargetUnits) do
+            print(i .. ". " .. name)
+        end
+        DevNgg:Notify({
+            Title   = "📋 Hunt List (" .. #autoHuntTargetUnits .. ")",
+            Content = "Check console (F9)!",
+            Duration = 3,
+        })
+    end,
+})
+
+HuntTab:CreateButton({
+    Name     = "🗑️ Clear Hunt List",
+    Callback = function()
+        autoHuntTargetUnits = {}
+        DevNgg:Notify({ Title = "🗑️ Cleared", Content = "Hunt list is now empty.", Duration = 3 })
+    end,
+})
+
+HuntTab:CreateToggle({
+    Name         = "⚡ Also Stop on Any Sparking Unit",
+    CurrentValue = true,
+    Flag         = "HuntFindSparking",
+    Callback     = function(enabled)
+        autoHuntFindSparking = enabled
+        DevNgg:Notify({
+            Title   = enabled and "⚡ Sparking Detection ON" or "⚡ Sparking Detection OFF",
+            Content = enabled and "Will stop on any sparking unit." or "Only stopping on list units.",
+            Duration = 3,
+        })
+    end,
+})
+
+HuntTab:CreateToggle({
+    Name         = "🔁 Start Auto Hunt + Server Hop",
+    CurrentValue = false,
+    Flag         = "AutoHuntEnabled",
+    Callback     = function(enabled)
+        autoHuntEnabled = enabled
+        if enabled then
+            if #autoHuntTargetUnits == 0 and not autoHuntFindSparking then
+                DevNgg:Notify({
+                    Title   = "⚠️ Nothing to Hunt!",
+                    Content = "Add units to the list or enable sparking detection.",
+                    Duration = 3,
+                })
+                autoHuntEnabled = false
+                return
+            end
+            DevNgg:Notify({
+                Title   = "🔁 Auto Hunt Started!",
+                Content = #autoHuntTargetUnits .. " unit(s) in list"
+                    .. (autoHuntFindSparking and " + Any Sparking" or ""),
+                Duration = 4,
+            })
+            startAutoHuntLoop()
+        else
+            DevNgg:Notify({ Title = "🔁 Auto Hunt Stopped", Content = "Hunt loop cancelled.", Duration = 3 })
+            if autoHuntThread then task.cancel(autoHuntThread) autoHuntThread = nil end
+        end
+    end,
+})
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 17: UI — TAB 4: ⚗️ Auto Merge
+-- ══════════════════════════════════════════════════════════════
+local MergeTab = Window:CreateTab("⚗️ Auto Merge", nil)
+
+MergeTab:CreateSection("Merge Configuration")
+
+MergeTab:CreateTextInput({
+    Name        = "Unit to Merge (blank = auto)",
+    Placeholder = "e.g. Toji, Meliodas... or leave blank",
+    Default     = "",
+    Callback    = function(text)
+        mergeTargetUnit = text
+        if text == "" then
+            DevNgg:Notify({ Title = "⚗️ Auto Mode", Content = "Will merge any unit with 4+ copies.", Duration = 3 })
+        else
+            DevNgg:Notify({ Title = "⚗️ Merge Target Set", Content = text, Duration = 2 })
+        end
+    end,
+})
+
+MergeTab:CreateButton({
+    Name     = "⚗️ Merge Once Now",
+    Callback = function() task.spawn(performMerge) end,
+})
+
+MergeTab:CreateSection("Auto Merge Loop")
+
+MergeTab:CreateToggle({
+    Name         = "⚗️ Auto Merge Loop",
+    CurrentValue = false,
+    Flag         = "AutoMerge",
+    Callback     = function(enabled)
+        autoMergeEnabled = enabled
+        if enabled then
+            DevNgg:Notify({
+                Title   = "⚗️ Auto Merge ON",
+                Content = mergeTargetUnit ~= "" and ("Merging: " .. mergeTargetUnit) or "Auto-merging any unit with 4+",
+                Duration = 3,
+            })
+            startMergeLoop()
+        else
+            DevNgg:Notify({ Title = "⚗️ Auto Merge OFF", Content = "Stopped.", Duration = 3 })
+            if mergeLoopThread then task.cancel(mergeLoopThread) mergeLoopThread = nil end
+        end
+    end,
+})
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 18: UI — TAB 5: ⚙️ Settings
+-- ══════════════════════════════════════════════════════════════
+local SettingsTab = Window:CreateTab("⚙️ Settings", nil)
+
+SettingsTab:CreateSection("Save / Load Configs")
+
+local currentConfigName = ""
+local configDropdown    = nil
+
+SettingsTab:CreateTextInput({
+    Name        = "Config Name",
+    Placeholder = "e.g. MyFarmSetup",
+    Default     = "",
+    Callback    = function(value) currentConfigName = value end,
+})
+
+SettingsTab:CreateButton({
+    Name     = "💾 Save Config",
+    Callback = function()
+        if currentConfigName == "" then
+            DevNgg:Notify({ Title = "⚠️ No Name", Content = "Type a config name first!", Duration = 3 })
+            return
+        end
+        pcall(function()
+            if not isfolder("AniPixels") then makefolder("AniPixels") end
+            if not isfolder("AniPixels/Configs") then makefolder("AniPixels/Configs") end
+            writefile("AniPixels/Configs/" .. currentConfigName .. ".json", HttpService:JSONEncode({
+                AutoCollect = dragonBallAutoCollect,
+                AutoHop     = dragonBallAutoHop,
+                WishTarget  = wishTargetUnit,
+            }))
+        end)
+        if configDropdown then configDropdown:SetOptions(getSavedConfigs()) end
+        DevNgg:Notify({ Title = "💾 Saved!", Content = currentConfigName .. " saved!", Duration = 3 })
+    end,
+})
+
+configDropdown = SettingsTab:CreateDropdown({
+    Name     = "Load Config",
+    Options  = getSavedConfigs(),
+    Default  = "",
+    Callback = function(selectedName)
+        local ok, data = pcall(function()
+            return HttpService:JSONDecode(readfile("AniPixels/Configs/" .. selectedName .. ".json"))
+        end)
+        if not ok or not data then
+            DevNgg:Notify({ Title = "❌ Load Failed", Content = "Could not load: " .. selectedName, Duration = 3 })
+            return
+        end
+        dragonBallAutoCollect = false
+        dragonBallAutoHop     = false
+        if collectLoopThread then task.cancel(collectLoopThread) collectLoopThread = nil end
+        wishTargetUnit = data.WishTarget or ""
+        Window:SetToggle("AutoCollect", data.AutoCollect or false)
+        Window:SetToggle("AutoHop",     data.AutoHop     or false)
+        DevNgg:Notify({ Title = "✅ Config Loaded!", Content = selectedName .. " applied!", Duration = 3 })
+    end,
+})
+
+SettingsTab:CreateButton({
+    Name     = "🗑️ Delete Selected Config",
+    Callback = function()
+        local selected = configDropdown:GetSelected()
+        if not selected or selected == "" then
+            DevNgg:Notify({ Title = "⚠️ None Selected", Content = "Select a config first!", Duration = 3 })
+            return
+        end
+        pcall(function()
+            if isfile("AniPixels/Configs/" .. selected .. ".json") then
+                delfile("AniPixels/Configs/" .. selected .. ".json")
+            end
+        end)
+        configDropdown:SetSelected("")
+        configDropdown:SetOptions(getSavedConfigs())
+        DevNgg:Notify({ Title = "🗑️ Deleted", Content = selected .. " deleted.", Duration = 3 })
+    end,
+})
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 19: DRAGON BALL REMOVAL LISTENER
+-- ══════════════════════════════════════════════════════════════
+local hopCooldownActive = false
+
+workspace.DescendantRemoving:Connect(function(obj)
+    if not dragonBallAutoHop or hopCooldownActive then return end
+    if not isDragonBall(obj) then return end
+    hopCooldownActive = true
+    task.delay(0.5, function()
+        if not dragonBallsExist() then
+            DevNgg:Notify({ Title = "🐉 All Balls Gone!", Content = "Hopping to next server...", Duration = 3 })
+            task.spawn(serverHop)
+        end
+        hopCooldownActive = false
+    end)
+end)
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 20: AUTO-LOAD LAST SESSION ON START
+-- ══════════════════════════════════════════════════════════════
+pcall(function()
+    if isfile("AniPixels/AutoFarm.json") then
+        local data = HttpService:JSONDecode(readfile("AniPixels/AutoFarm.json"))
+        if data then
+            wishTargetUnit = data.WishTarget or ""
+            Window:SetToggle("AutoCollect", data.AutoCollect or false)
+            Window:SetToggle("AutoHop",     data.AutoHop     or false)
+            DevNgg:Notify({ Title = "💾 Session Restored", Content = "Last settings loaded!", Duration = 3 })
+        end
+    end
+end)
