@@ -1,6 +1,6 @@
 -- ╔══════════════════════════════════════════════════════════════╗
--- ║           AniPixels Ultimate Auto Farm v5.2                 ║
--- ║           Dragon Balls + Unit Hunter + Auto Merge            ║
+-- ║           AniPixels Ultimate Auto Farm v6.2                 ║
+-- ║     Dragon Balls + Unit Hunter + Auto Merge + Auto Raid      ║
 -- ║           by Dev N                                           ║
 -- ╚══════════════════════════════════════════════════════════════╝
 
@@ -14,7 +14,7 @@ local DevNgg = loadstring(game:HttpGet(
 local Window = DevNgg:CreateWindow({
     Name             = "🎮 AniPixels Ultimate Farm",
     LoadingSubtitle  = "by Dev N",
-    Version          = "v5.2",
+    Version          = "v6.2",
     ToggleUIKeybind  = "K",
     ConfigurationSaving = { Enabled = false },
 })
@@ -31,7 +31,6 @@ local LocalPlayer = Players.LocalPlayer
 
 -- ══════════════════════════════════════════════════════════════
 -- SECTION 3: GLOBAL STATE
--- All toggleable states and user inputs stored here
 -- ══════════════════════════════════════════════════════════════
 
 -- Dragon Ball
@@ -42,31 +41,44 @@ local isCollecting          = false
 local isHopping             = false
 
 -- Threads
-local collectLoopThread     = nil
-local mergeLoopThread       = nil
-local autoHuntThread        = nil
+local collectLoopThread = nil
+local mergeLoopThread   = nil
+local autoHuntThread    = nil
+local raidLoopThread    = nil
 
 -- Wish
-local wishTargetUnit        = ""
+local wishTargetUnit = ""
 
 -- Merge
-local mergeTargetUnit       = ""
-local autoMergeEnabled      = false
+local mergeTargetUnit  = ""
+local autoMergeEnabled = false
 
--- Quick Teleport (manual, one-time)
+-- Quick Teleport
 local quickTeleportTarget   = ""
 local quickTeleportSparking = false
 
--- Auto Hunt (continuous loop with server hop)
-local autoHuntTargetUnits   = {}     -- list of unit names to hunt
-local autoHuntTargetUnit    = ""     -- current text input buffer
-local autoHuntFindSparking  = true   -- also stop on any sparking unit
-local autoHuntEnabled       = false  -- master toggle
+-- Auto Hunt
+local autoHuntTargetUnits  = {}
+local autoHuntTargetUnit   = ""
+local autoHuntFindSparking = true
+local autoHuntEnabled      = false
+local autoHuntServerHop    = true
+
+-- Hunt list dropdown ref (assigned after UI is built)
+local huntListDropdown = nil
+local function refreshHuntDropdown()
+    if huntListDropdown then
+        local opts = #autoHuntTargetUnits > 0 and autoHuntTargetUnits or {"(empty)"}
+        huntListDropdown:SetOptions(opts)
+        huntListDropdown:SetSelected("")
+    end
+end
+
+-- Auto Raid
+local autoRaidEnabled = false
 
 -- ══════════════════════════════════════════════════════════════
 -- SECTION 4: VALID UNIT LIST
--- Full list of all capturable units from RS.Doodles
--- Used to filter out NPCs, bosses, and decorations
 -- ══════════════════════════════════════════════════════════════
 local VALID_UNITS = {
     ["Aizen"]=true,["Akaza"]=true,["Aki"]=true,["Al"]=true,["All For One"]=true,
@@ -139,22 +151,81 @@ local VALID_UNITS = {
     ["Zoro"]=true,
 }
 
--- Tier prefixes used in unit names
 local TIER_PREFIXES = {
     "Titan Sparking ", "Mega Sparking ", "Giant Sparking ", "Sparking ",
     "Titan ", "Mega ", "Giant ",
 }
 
 -- ══════════════════════════════════════════════════════════════
--- SECTION 5: UNIT HELPER FUNCTIONS
+-- SECTION 5: RAID BOSS DETECTION
+-- Each raid boss has its OWN dedicated Campaign folder
+-- with the EXACT same name as the boss:
+--   Campaign["Heian Era Sukuna"].Pets.Heian Era Sukuna
+--   Campaign["All For One"].Pets.All For One
+--   Campaign["Madara Ten Tails"].Pets.Madara Ten Tails
+--   Campaign["Boros"].Pets.Boros
+--   Campaign["Fusion Zamasu (Corrupted)"].Pets.Fusion Zamasu (Corrupted)
 -- ══════════════════════════════════════════════════════════════
 
--- Returns true if the unit name contains "Sparking"
+-- The exact Campaign folder names for each raid boss
+local RAID_BOSS_FOLDERS = {
+    ["Heian Era Sukuna"]          = true,
+    ["All For One"]               = true,
+    ["Madara Ten Tails"]          = true,
+    ["Boros"]                     = true,
+    ["Fusion Zamasu (Corrupted)"] = true,
+}
+
+-- Returns true if part lives inside a dedicated raid boss folder in Campaign
+-- Campaign.BossName.Pets.Part  →  bossFolder = Campaign.BossName
+local function isRaidBoss(part)
+    local petsFolder = part.Parent
+    local bossFolder = petsFolder and petsFolder.Parent
+    if not bossFolder then return false end
+    local campaignCheck = bossFolder.Parent
+    if not campaignCheck or campaignCheck.Name ~= "Campaign" then return false end
+    return RAID_BOSS_FOLDERS[bossFolder.Name] == true
+end
+
+-- Raid is active when any raid boss folder exists directly under Campaign
+local function isRaidActive()
+    local campaign = workspace:FindFirstChild("Campaign")
+    if not campaign then return false end
+    for _, child in ipairs(campaign:GetChildren()) do
+        if RAID_BOSS_FOLDERS[child.Name] then return true end
+    end
+    return false
+end
+
+-- Find the first Part inside any raid boss folder in Campaign
+local function findRaidBossPart()
+    local campaign = workspace:FindFirstChild("Campaign")
+    if not campaign then return nil end
+    for _, child in ipairs(campaign:GetChildren()) do
+        if RAID_BOSS_FOLDERS[child.Name] then
+            for _, part in ipairs(child:GetDescendants()) do
+                if part:IsA("Part") then
+                    return part
+                end
+            end
+        end
+    end
+    return nil
+end
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 6: REMOTES
+-- ══════════════════════════════════════════════════════════════
+local Events = ReplicatedStorage:WaitForChild("Events")
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 7: UNIT HELPER FUNCTIONS
+-- ══════════════════════════════════════════════════════════════
+
 local function isSparking(unitName)
     return unitName:find("Sparking") ~= nil
 end
 
--- Returns true if unit exists in VALID_UNITS (strips tier prefix first)
 local function isValidUnit(unitName)
     if VALID_UNITS[unitName] then return true end
     for _, prefix in ipairs(TIER_PREFIXES) do
@@ -165,10 +236,9 @@ local function isValidUnit(unitName)
     return false
 end
 
--- Scans workspace.Campaign for a specific unit and/or any sparking unit
--- specificUnit: partial name to match, "" = skip specific search
--- findSparking: if true, also returns first sparking unit found
--- Returns: (unitPart, reason) where reason = "specific" | "sparking" | nil
+-- scanCampaign: used by Auto Hunt
+-- Always skips raid bosses regardless of raid state
+-- FIX: properly scans ALL units in list, not just first match
 local function scanCampaign(specificUnit, findSparking)
     local campaign = workspace:FindFirstChild("Campaign")
     if not campaign then return nil, nil end
@@ -179,17 +249,17 @@ local function scanCampaign(specificUnit, findSparking)
     for _, part in ipairs(campaign:GetDescendants()) do
         if not part:IsA("Part") then continue end
         if not isValidUnit(part.Name) then continue end
+        -- Always skip raid bosses in hunt scan
+        if isRaidBoss(part) then continue end
 
         local nameLower = part.Name:lower()
 
-        -- Check specific unit match
         if specificUnit and specificUnit ~= "" then
             if nameLower:find(specificUnit:lower(), 1, true) then
                 specificResult = part
             end
         end
 
-        -- Check for any sparking unit
         if findSparking and isSparking(part.Name) then
             sparkingResult = sparkingResult or part
         end
@@ -202,7 +272,8 @@ local function scanCampaign(specificUnit, findSparking)
     return nil, nil
 end
 
--- Simple single-unit finder for manual quick teleport
+-- findUnitOnMap: used by manual Quick Teleport
+-- Always skips raid bosses so teleport never goes to boss
 local function findUnitOnMap(unitName, sparkingOnly)
     local campaign = workspace:FindFirstChild("Campaign")
     if not campaign then return nil end
@@ -212,13 +283,15 @@ local function findUnitOnMap(unitName, sparkingOnly)
         if not part.Name:lower():find(nameLower, 1, true) then continue end
         if not isValidUnit(part.Name) then continue end
         if sparkingOnly and not isSparking(part.Name) then continue end
+        -- Always skip raid bosses for manual teleport
+        if isRaidBoss(part) then continue end
         return part
     end
     return nil
 end
 
 -- ══════════════════════════════════════════════════════════════
--- SECTION 6: PLAYER / CHARACTER HELPERS
+-- SECTION 8: PLAYER / CHARACTER HELPERS
 -- ══════════════════════════════════════════════════════════════
 
 local function getHumanoidRootPart()
@@ -241,7 +314,7 @@ local function teleportToPosition(position)
 end
 
 -- ══════════════════════════════════════════════════════════════
--- SECTION 7: DRAGON BALL HELPERS
+-- SECTION 9: DRAGON BALL HELPERS
 -- ══════════════════════════════════════════════════════════════
 
 local function isDragonBall(obj)
@@ -302,7 +375,7 @@ local function collectAllDragonBalls()
 end
 
 -- ══════════════════════════════════════════════════════════════
--- SECTION 8: SERVER HOP
+-- SECTION 10: SERVER HOP
 -- ══════════════════════════════════════════════════════════════
 
 local function fetchServerPage(placeId, cursor)
@@ -331,7 +404,7 @@ function serverHop(noCheck)
         end
     end
 
-    isHopping   = true
+    isHopping    = true
     isCollecting = false
     DevNgg:Notify({ Title = "🔀 Server Hop", Content = "Searching for a server...", Duration = 2 })
 
@@ -412,77 +485,83 @@ function serverHop(noCheck)
 end
 
 -- ══════════════════════════════════════════════════════════════
--- SECTION 9: AUTO HUNT LOOP
--- Loops through the hunt list, hops servers until one is found
+-- SECTION 11: AUTO HUNT LOOP
+-- Continuously scans all units in list
+-- After finding: stops and resets toggle
+-- After hop: waits for map to load then scans again
 -- ══════════════════════════════════════════════════════════════
+
+local function checkHuntList()
+    local campaign = workspace:FindFirstChild("Campaign")
+    if not campaign then return nil, nil end
+
+    -- Check each unit name independently with its own full scan
+    for _, unitName in ipairs(autoHuntTargetUnits) do
+        local target = unitName:lower()
+        for _, part in ipairs(campaign:GetDescendants()) do
+            if part:IsA("Part") and isValidUnit(part.Name) and not isRaidBoss(part) then
+                if part.Name:lower():find(target, 1, true) then
+                    return part, "specific"
+                end
+            end
+        end
+    end
+
+    -- Check for any sparking unit
+    if autoHuntFindSparking then
+        for _, part in ipairs(campaign:GetDescendants()) do
+            if part:IsA("Part") and isValidUnit(part.Name) and not isRaidBoss(part) then
+                if isSparking(part.Name) then
+                    return part, "sparking"
+                end
+            end
+        end
+    end
+
+    return nil, nil
+end
+
 local function startAutoHuntLoop()
+    if autoHuntThread then task.cancel(autoHuntThread) autoHuntThread = nil end
     autoHuntThread = task.spawn(function()
-        task.wait(3) -- wait for map to load on new server
-
+        task.wait(2) -- wait for map to load after server hop
         while autoHuntEnabled do
-            local foundUnit   = nil
-            local foundReason = nil
-
-            -- Check each unit in the hunt list one by one
-            for _, unitName in ipairs(autoHuntTargetUnits) do
-                local result, reason = scanCampaign(unitName, false)
-                if result then
-                    foundUnit   = result
-                    foundReason = "specific"
-                    break
-                end
-            end
-
-            -- If no specific unit found, check for any sparking unit
-            if not foundUnit and autoHuntFindSparking then
-                local result, reason = scanCampaign("", true)
-                if result then
-                    foundUnit   = result
-                    foundReason = "sparking"
-                end
-            end
+            local foundUnit, foundReason = checkHuntList()
 
             if foundUnit then
-                -- Found! Teleport and stop the loop
                 teleportToPosition(foundUnit.Position)
-
-                if foundReason == "specific" then
-                    DevNgg:Notify({
-                        Title   = "✅ Found: " .. foundUnit.Name,
-                        Content = "Unit from your list!" .. (isSparking(foundUnit.Name) and " ⚡" or ""),
-                        Duration = 5,
-                    })
-                elseif foundReason == "sparking" then
-                    DevNgg:Notify({
-                        Title   = "⚡ Sparking Found: " .. foundUnit.Name,
-                        Content = "Sparking unit on this server!",
-                        Duration = 5,
-                    })
-                end
-
+                DevNgg:Notify({
+                    Title   = foundReason == "sparking" and "⚡ Sparking: " .. foundUnit.Name or "✅ Found: " .. foundUnit.Name,
+                    Content = foundReason == "sparking" and "Sparking unit on this server!" or "Unit from your list!" .. (isSparking(foundUnit.Name) and " ⚡" or ""),
+                    Duration = 5,
+                })
                 autoHuntEnabled = false
+                pcall(function() Window:SetToggle("AutoHuntEnabled", false) end)
                 return
 
-            else
-                -- Nothing found on this server, hop to the next
+            elseif autoHuntServerHop then
                 DevNgg:Notify({
-                    Title   = "❌ Nothing Found",
-                    Content = "Hopping to next server...",
+                    Title   = "❌ Not Found",
+                    Content = "Checked " .. #autoHuntTargetUnits .. " unit(s) — hopping...",
                     Duration = 3,
                 })
                 serverHop(true)
-                task.wait(6) -- wait for new server map to fully load
+                -- Wait for server hop + map load, then rescan
+                task.wait(12)
+
+            else
+                -- No hop: keep rescanning current server every 2s
+                task.wait(2)
             end
 
-            task.wait(1)
+            task.wait(0.3)
         end
     end)
 end
 
 -- ══════════════════════════════════════════════════════════════
--- SECTION 10: AUTO WISH (SHENRON)
+-- SECTION 12: AUTO WISH (SHENRON)
 -- ══════════════════════════════════════════════════════════════
-local Events = ReplicatedStorage:WaitForChild("Events")
 
 Events.UpdateDragonBallBackpack.OnClientEvent:Connect(function(count)
     if not dragonBallAutoWish then return end
@@ -510,8 +589,9 @@ Events.ShenronWishes.OnClientEvent:Connect(function()
 end)
 
 -- ══════════════════════════════════════════════════════════════
--- SECTION 11: AUTO MERGE
+-- SECTION 13: AUTO MERGE
 -- ══════════════════════════════════════════════════════════════
+
 local function performMerge()
     local doodleInv = LocalPlayer:FindFirstChild("DoodleInv")
     if not doodleInv then return end
@@ -567,22 +647,115 @@ local function performMerge()
 end
 
 -- ══════════════════════════════════════════════════════════════
--- SECTION 12: MAIN BACKGROUND LOOPS
+-- SECTION 14: AUTO RAID
+-- Detects raid by checking Campaign for boss folders (Wild/OddFight/Safari)
+-- Teleports to boss, clicks Auto TextButton at BattleChats.BattleChat.Auto
+-- Also listens for new boss folders spawning mid-session
 -- ══════════════════════════════════════════════════════════════
 
-local function startCollectLoop()
-    collectLoopThread = task.spawn(function()
-        task.wait(3)
-        while dragonBallAutoCollect do
-            if not isCollecting and not isHopping then
-                if #getAllDragonBalls() > 0 then
-                    collectAllDragonBalls()
-                else
-                    DevNgg:Notify({ Title = "❌ No Balls Found", Content = "Hopping server...", Duration = 2 })
-                    if dragonBallAutoHop then serverHop() end
+-- Click the Auto battle button — try TextButton first, then ImageButton
+local function clickAutoBattle()
+    for _, obj in ipairs(LocalPlayer.PlayerGui:GetDescendants()) do
+        if obj.Name == "Auto" and (obj:IsA("TextButton") or obj:IsA("ImageButton")) then
+            pcall(function() obj.MouseButton1Click:Fire() end)
+            return true
+        end
+    end
+    return false
+end
+
+-- Teleport to boss and enable auto battle
+local function teleportToBossAndFight()
+    local boss = findRaidBossPart()
+    if not boss then
+        DevNgg:Notify({ Title = "❌ Boss Not Found", Content = "No raid boss part found in Campaign!", Duration = 3 })
+        return false
+    end
+    local hrp = getHumanoidRootPart()
+    if hrp then
+        hrp.CFrame = CFrame.new(boss.Position + Vector3.new(0, 5, 5))
+        task.wait(0.4)
+    end
+    local clicked = clickAutoBattle()
+    DevNgg:Notify({
+        Title   = "⚔️ " .. boss.Name,
+        Content = clicked and "Teleported! Auto Battle ON!" or "Teleported! Enable Auto Battle manually.",
+        Duration = 4,
+    })
+    return true
+end
+
+local function startRaidLoop()
+    raidLoopThread = task.spawn(function()
+        local wasActive = false
+        while autoRaidEnabled do
+            local active = isRaidActive()
+            if active and not wasActive then
+                task.wait(1.5) -- wait for boss to fully load
+                if autoRaidEnabled then
+                    teleportToBossAndFight()
                 end
+                wasActive = true
+            elseif not active and wasActive then
+                wasActive = false
+                DevNgg:Notify({ Title = "✅ Raid Ended", Content = "Boss defeated!", Duration = 3 })
             end
             task.wait(1)
+        end
+    end)
+end
+
+-- Also catch boss folders spawning via DescendantAdded
+workspace.DescendantAdded:Connect(function(obj)
+    if not autoRaidEnabled then return end
+    if not (obj:IsA("Model") or obj:IsA("Folder")) then return end
+    local n = obj.Name
+    if n:find("Wild") or n:find("OddFight") or n:find("Safari")
+    or n:find("Fusion Zamasu") or n:find("Heian") then
+        local parent = obj.Parent
+        if parent and parent.Name == "Campaign" then
+            task.wait(2) -- wait for parts to load
+            if autoRaidEnabled then
+                teleportToBossAndFight()
+            end
+        end
+    end
+end)
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 15: MAIN LOOPS
+-- Dragon Ball: event-driven + lightweight 3s fallback poll
+-- ══════════════════════════════════════════════════════════════
+
+local function onDragonBallDetected()
+    if not dragonBallAutoCollect or isCollecting or isHopping then return end
+    task.spawn(collectAllDragonBalls)
+end
+
+-- React instantly when a new ball spawns in workspace
+workspace.DescendantAdded:Connect(function(obj)
+    if not dragonBallAutoCollect then return end
+    if isDragonBall(obj) then
+        task.wait(0.1)
+        onDragonBallDetected()
+    end
+end)
+
+local function startCollectLoop()
+    if collectLoopThread then task.cancel(collectLoopThread) collectLoopThread = nil end
+    collectLoopThread = task.spawn(function()
+        task.wait(1.5)
+        while dragonBallAutoCollect do
+            if not isCollecting and not isHopping then
+                if dragonBallsExist() then
+                    onDragonBallDetected()
+                elseif dragonBallAutoHop then
+                    DevNgg:Notify({ Title = "❌ No Balls Found", Content = "Hopping server...", Duration = 2 })
+                    serverHop()
+                    task.wait(8)
+                end
+            end
+            task.wait(3)
         end
     end)
 end
@@ -597,7 +770,7 @@ local function startMergeLoop()
 end
 
 -- ══════════════════════════════════════════════════════════════
--- SECTION 13: CONFIG SAVE / LOAD
+-- SECTION 16: CONFIG SAVE / LOAD
 -- ══════════════════════════════════════════════════════════════
 
 local function saveConfig()
@@ -625,11 +798,11 @@ local function getSavedConfigs()
 end
 
 -- ══════════════════════════════════════════════════════════════
--- SECTION 14: UI — TAB 1: 🐉 Dragon Ball
+-- SECTION 17: UI — TAB 1: 🐉 Dragon Ball
 -- ══════════════════════════════════════════════════════════════
 local DragonBallTab = Window:CreateTab("🐉 Dragon Ball", nil)
 
-DragonBallTab:CreateSection("Auto Collect Settings")
+DragonBallTab:CreateSection("Auto Collect")
 
 DragonBallTab:CreateToggle({
     Name         = "⚡ Auto Collect Dragon Balls",
@@ -663,7 +836,7 @@ DragonBallTab:CreateToggle({
     end,
 })
 
-DragonBallTab:CreateSection("Manual Controls")
+DragonBallTab:CreateSection("Manual")
 
 DragonBallTab:CreateButton({
     Name     = "🔀 Server Hop Now",
@@ -676,9 +849,9 @@ DragonBallTab:CreateButton({
 })
 
 -- ══════════════════════════════════════════════════════════════
--- SECTION 15: UI — TAB 2: ✨ Shenron Wish
+-- SECTION 18: UI — TAB 2: ✨ Shenron
 -- ══════════════════════════════════════════════════════════════
-local WishTab = Window:CreateTab("✨ Shenron Wish", nil)
+local WishTab = Window:CreateTab("✨ Shenron", nil)
 
 WishTab:CreateSection("Wish Configuration")
 
@@ -694,7 +867,7 @@ WishTab:CreateTextInput({
 })
 
 WishTab:CreateButton({
-    Name     = "🔍 List All Titan Sparking Units (F9)",
+    Name     = "🔍 List Titan Sparking Units (F9)",
     Callback = function()
         local doodles = ReplicatedStorage:WaitForChild("Doodles")
         local found = {}
@@ -704,7 +877,7 @@ WishTab:CreateButton({
             end
         end
         if #found == 0 then
-            DevNgg:Notify({ Title = "❌ None Found", Content = "No Titan Sparking units in RS.Doodles.", Duration = 3 })
+            DevNgg:Notify({ Title = "❌ None Found", Content = "No Titan Sparking units found.", Duration = 3 })
         else
             print("=== TITAN SPARKING UNITS (" .. #found .. ") ===")
             for _, name in ipairs(found) do print(name) end
@@ -746,16 +919,15 @@ WishTab:CreateButton({
 })
 
 -- ══════════════════════════════════════════════════════════════
--- SECTION 16: UI — TAB 3: 🎯 Hunt
+-- SECTION 19: UI — TAB 3: 🎯 Hunt
 -- ══════════════════════════════════════════════════════════════
 local HuntTab = Window:CreateTab("🎯 Hunt", nil)
 
--- ── Quick Teleport ───────────────────────────────────────────
-HuntTab:CreateSection("Quick Teleport (Manual, One-Time)")
+HuntTab:CreateSection("Quick Teleport")
 
 HuntTab:CreateTextInput({
     Name        = "Unit Name",
-    Placeholder = "e.g. Zoono, Makima, Hakari... (partial ok)",
+    Placeholder = "e.g. Zoono, Makima... (partial ok)",
     Default     = "",
     Callback    = function(text)
         if text ~= "" then
@@ -766,7 +938,7 @@ HuntTab:CreateTextInput({
 })
 
 HuntTab:CreateToggle({
-    Name         = "⚡ Sparking Only (Quick Teleport)",
+    Name         = "⚡ Sparking Only",
     CurrentValue = false,
     Flag         = "QuickSparkingOnly",
     Callback     = function(enabled)
@@ -795,7 +967,11 @@ HuntTab:CreateButton({
                 Duration = 3,
             })
         else
-            DevNgg:Notify({ Title = "❌ Not Found", Content = '"' .. quickTeleportTarget .. '" not on this map.', Duration = 3 })
+            DevNgg:Notify({
+                Title   = "❌ Not Found",
+                Content = '"' .. quickTeleportTarget .. '" not found (raid bosses excluded).',
+                Duration = 3,
+            })
         end
     end,
 })
@@ -809,39 +985,44 @@ HuntTab:CreateButton({
             return
         end
         local seen, count = {}, 0
-        print("=== UNITS CURRENTLY ON MAP ===")
+        print("=== UNITS ON MAP (bosses excluded) ===")
         for _, part in ipairs(campaign:GetDescendants()) do
-            if part:IsA("Part") and isValidUnit(part.Name) and not seen[part.Name] then
+            if part:IsA("Part") and isValidUnit(part.Name) and not seen[part.Name] and not isRaidBoss(part) then
                 seen[part.Name] = true
                 count += 1
                 print((isSparking(part.Name) and "⚡ " or "   ") .. part.Name)
             end
         end
-        print("Total: " .. count .. " units")
+        print("Total: " .. count)
         DevNgg:Notify({ Title = "📋 " .. count .. " Units on Map", Content = "Check console (F9)!", Duration = 4 })
     end,
 })
 
--- ── Auto Hunt + Server Hop ───────────────────────────────────
-HuntTab:CreateSection("Auto Hunt + Server Hop (Unit List)")
+HuntTab:CreateSection("Hunt List")
 
 HuntTab:CreateTextInput({
     Name        = "Add Unit to Hunt List",
-    Placeholder = "e.g. Zoono, Makima... (one at a time)",
+    Placeholder = "e.g. Zoono, Makima...",
     Default     = "",
-    Callback    = function(text)
-        autoHuntTargetUnit = text
-    end,
+    Callback    = function(text) autoHuntTargetUnit = text end,
 })
 
 HuntTab:CreateButton({
-    Name     = "➕ Add Unit to List",
+    Name     = "➕ Add to List",
     Callback = function()
         if autoHuntTargetUnit == "" then
             DevNgg:Notify({ Title = "⚠️ Empty!", Content = "Type a unit name first!", Duration = 3 })
             return
         end
+        -- Prevent duplicates
+        for _, existing in ipairs(autoHuntTargetUnits) do
+            if existing:lower() == autoHuntTargetUnit:lower() then
+                DevNgg:Notify({ Title = "⚠️ Already in List", Content = autoHuntTargetUnit .. " is already added.", Duration = 3 })
+                return
+            end
+        end
         table.insert(autoHuntTargetUnits, autoHuntTargetUnit)
+        refreshHuntDropdown()
         DevNgg:Notify({
             Title   = "➕ Added: " .. autoHuntTargetUnit,
             Content = "List total: " .. #autoHuntTargetUnits .. " unit(s)",
@@ -851,35 +1032,37 @@ HuntTab:CreateButton({
     end,
 })
 
-HuntTab:CreateButton({
-    Name     = "📋 Show Hunt List (F9)",
-    Callback = function()
-        if #autoHuntTargetUnits == 0 then
-            DevNgg:Notify({ Title = "📋 Hunt List", Content = "Empty! Add units above.", Duration = 3 })
-            return
-        end
-        print("=== HUNT LIST (" .. #autoHuntTargetUnits .. ") ===")
+-- Dropdown showing only units in hunt list — select one to remove it
+huntListDropdown = HuntTab:CreateDropdown({
+    Name     = "🗑️ Select Unit to Remove",
+    Options  = {"(empty)"},
+    Default  = "",
+    Callback = function(selected)
+        if selected == "(empty)" or selected == "" then return end
         for i, name in ipairs(autoHuntTargetUnits) do
-            print(i .. ". " .. name)
+            if name == selected then
+                table.remove(autoHuntTargetUnits, i)
+                refreshHuntDropdown()
+                DevNgg:Notify({ Title = "🗑️ Removed", Content = selected .. " removed from list.", Duration = 3 })
+                return
+            end
         end
-        DevNgg:Notify({
-            Title   = "📋 Hunt List (" .. #autoHuntTargetUnits .. ")",
-            Content = "Check console (F9)!",
-            Duration = 3,
-        })
     end,
 })
 
 HuntTab:CreateButton({
-    Name     = "🗑️ Clear Hunt List",
+    Name     = "🗑️ Clear Entire Hunt List",
     Callback = function()
         autoHuntTargetUnits = {}
+        refreshHuntDropdown()
         DevNgg:Notify({ Title = "🗑️ Cleared", Content = "Hunt list is now empty.", Duration = 3 })
     end,
 })
 
+HuntTab:CreateSection("Auto Hunt Settings")
+
 HuntTab:CreateToggle({
-    Name         = "⚡ Also Stop on Any Sparking Unit",
+    Name         = "⚡ Also Stop on Any Sparking",
     CurrentValue = true,
     Flag         = "HuntFindSparking",
     Callback     = function(enabled)
@@ -893,25 +1076,34 @@ HuntTab:CreateToggle({
 })
 
 HuntTab:CreateToggle({
-    Name         = "🔁 Start Auto Hunt + Server Hop",
+    Name         = "🔀 Auto Server Hop (Hunt)",
+    CurrentValue = true,
+    Flag         = "HuntServerHop",
+    Callback     = function(enabled)
+        autoHuntServerHop = enabled
+        DevNgg:Notify({
+            Title   = enabled and "🔀 Hunt Hop ON" or "🔀 Hunt Hop OFF",
+            Content = enabled and "Will hop servers until unit is found." or "Will only check current server.",
+            Duration = 3,
+        })
+    end,
+})
+
+HuntTab:CreateToggle({
+    Name         = "🔁 Start Auto Hunt",
     CurrentValue = false,
     Flag         = "AutoHuntEnabled",
     Callback     = function(enabled)
         autoHuntEnabled = enabled
         if enabled then
             if #autoHuntTargetUnits == 0 and not autoHuntFindSparking then
-                DevNgg:Notify({
-                    Title   = "⚠️ Nothing to Hunt!",
-                    Content = "Add units to the list or enable sparking detection.",
-                    Duration = 3,
-                })
+                DevNgg:Notify({ Title = "⚠️ Nothing to Hunt!", Content = "Add units or enable sparking detection.", Duration = 3 })
                 autoHuntEnabled = false
                 return
             end
             DevNgg:Notify({
                 Title   = "🔁 Auto Hunt Started!",
-                Content = #autoHuntTargetUnits .. " unit(s) in list"
-                    .. (autoHuntFindSparking and " + Any Sparking" or ""),
+                Content = #autoHuntTargetUnits .. " unit(s)" .. (autoHuntFindSparking and " + Sparking" or "") .. (autoHuntServerHop and " | Hop ON" or " | Hop OFF"),
                 Duration = 4,
             })
             startAutoHuntLoop()
@@ -923,11 +1115,11 @@ HuntTab:CreateToggle({
 })
 
 -- ══════════════════════════════════════════════════════════════
--- SECTION 17: UI — TAB 4: ⚗️ Auto Merge
+-- SECTION 20: UI — TAB 4: ⚗️ Merge
 -- ══════════════════════════════════════════════════════════════
-local MergeTab = Window:CreateTab("⚗️ Auto Merge", nil)
+local MergeTab = Window:CreateTab("⚗️ Merge", nil)
 
-MergeTab:CreateSection("Merge Configuration")
+MergeTab:CreateSection("Configuration")
 
 MergeTab:CreateTextInput({
     Name        = "Unit to Merge (blank = auto)",
@@ -935,11 +1127,11 @@ MergeTab:CreateTextInput({
     Default     = "",
     Callback    = function(text)
         mergeTargetUnit = text
-        if text == "" then
-            DevNgg:Notify({ Title = "⚗️ Auto Mode", Content = "Will merge any unit with 4+ copies.", Duration = 3 })
-        else
-            DevNgg:Notify({ Title = "⚗️ Merge Target Set", Content = text, Duration = 2 })
-        end
+        DevNgg:Notify({
+            Title   = "⚗️ " .. (text == "" and "Auto Mode" or "Target Set"),
+            Content = text == "" and "Will merge any unit with 4+ copies." or text,
+            Duration = 2,
+        })
     end,
 })
 
@@ -959,7 +1151,7 @@ MergeTab:CreateToggle({
         if enabled then
             DevNgg:Notify({
                 Title   = "⚗️ Auto Merge ON",
-                Content = mergeTargetUnit ~= "" and ("Merging: " .. mergeTargetUnit) or "Auto-merging any unit with 4+",
+                Content = mergeTargetUnit ~= "" and ("Merging: " .. mergeTargetUnit) or "Auto-merging any with 4+",
                 Duration = 3,
             })
             startMergeLoop()
@@ -971,7 +1163,68 @@ MergeTab:CreateToggle({
 })
 
 -- ══════════════════════════════════════════════════════════════
--- SECTION 18: UI — TAB 5: ⚙️ Settings
+-- SECTION 21: UI — TAB 5: ⚔️ Raid
+-- ══════════════════════════════════════════════════════════════
+local RaidTab = Window:CreateTab("⚔️ Raid", nil)
+
+RaidTab:CreateSection("Raid Status")
+
+RaidTab:CreateButton({
+    Name     = "📊 Check Raid Status",
+    Callback = function()
+        if isRaidActive() then
+            local boss = findRaidBossPart()
+            DevNgg:Notify({
+                Title   = "⚔️ Raid Active!",
+                Content = boss and ("Boss: " .. boss.Name) or "Boss part not found yet.",
+                Duration = 4,
+            })
+        else
+            DevNgg:Notify({ Title = "❌ No Raid Active", Content = "No boss folders in Campaign.", Duration = 3 })
+        end
+    end,
+})
+
+RaidTab:CreateSection("Auto Raid")
+
+RaidTab:CreateToggle({
+    Name         = "⚔️ Auto Raid",
+    CurrentValue = false,
+    Flag         = "AutoRaid",
+    Callback     = function(enabled)
+        autoRaidEnabled = enabled
+        if enabled then
+            -- If raid already active, go immediately
+            if isRaidActive() then
+                DevNgg:Notify({ Title = "⚔️ Auto Raid ON", Content = "Raid detected — teleporting now!", Duration = 3 })
+                task.spawn(function()
+                    task.wait(0.5)
+                    teleportToBossAndFight()
+                end)
+            else
+                DevNgg:Notify({ Title = "⚔️ Auto Raid ON", Content = "Waiting for raid to start...", Duration = 3 })
+            end
+            startRaidLoop()
+        else
+            DevNgg:Notify({ Title = "⚔️ Auto Raid OFF", Content = "Stopped.", Duration = 3 })
+            if raidLoopThread then task.cancel(raidLoopThread) raidLoopThread = nil end
+        end
+    end,
+})
+
+RaidTab:CreateButton({
+    Name     = "⚔️ Teleport to Boss Now",
+    Callback = function()
+        if not isRaidActive() then
+            DevNgg:Notify({ Title = "❌ No Raid", Content = "No raid boss detected!", Duration = 3 })
+            return
+        end
+        task.spawn(teleportToBossAndFight)
+    end,
+})
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 22: UI — TAB 6: ⚙️ Settings
 -- ══════════════════════════════════════════════════════════════
 local SettingsTab = Window:CreateTab("⚙️ Settings", nil)
 
@@ -1050,7 +1303,7 @@ SettingsTab:CreateButton({
 })
 
 -- ══════════════════════════════════════════════════════════════
--- SECTION 19: DRAGON BALL REMOVAL LISTENER
+-- SECTION 23: DRAGON BALL REMOVAL LISTENER
 -- ══════════════════════════════════════════════════════════════
 local hopCooldownActive = false
 
@@ -1068,7 +1321,7 @@ workspace.DescendantRemoving:Connect(function(obj)
 end)
 
 -- ══════════════════════════════════════════════════════════════
--- SECTION 20: AUTO-LOAD LAST SESSION ON START
+-- SECTION 24: AUTO-LOAD LAST SESSION
 -- ══════════════════════════════════════════════════════════════
 pcall(function()
     if isfile("AniPixels/AutoFarm.json") then
@@ -1081,3 +1334,15 @@ pcall(function()
         end
     end
 end)
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 25: GUI KEYBIND REMINDER
+-- K = toggle GUI visibility (show/hide)
+-- GUI can also be dragged by the header
+-- ══════════════════════════════════════════════════════════════
+task.wait(2)
+DevNgg:Notify({
+    Title   = "🎮 AniPixels v6.2 Ready!",
+    Content = "Press K to show/hide the GUI anytime.",
+    Duration = 5,
+})
