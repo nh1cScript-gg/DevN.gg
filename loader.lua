@@ -1,5 +1,14 @@
 -- DevN.gg GUI Library
--- loader.lua — v2.0 | Fixed + Polished
+-- loader.lua — v2.1 | Fixed + Refactored
+-- Changes from v2.0:
+--   • SetOptions() always rebuilds list even when dropdown is closed (MAIN FIX)
+--   • SetOptions() auto-resets selected if value no longer in list
+--   • Added Dropdown:AddOption(opt) — add single item without full rebuild
+--   • Added Dropdown:RemoveOption(opt) — remove single item by value
+--   • Added Dropdown:GetOptions() — returns current options table
+--   • Added Window:GetFlag(flag) — read current toggle state from script
+--   • Notification cap: max 5 stacked at once, extras are dropped
+--   • Label:SetColor(c) added for dynamic text color
 
 local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -14,7 +23,7 @@ local toggleSetters = {}
 local saveFolder    = "DevNgg"
 local saveFile      = "config"
 
--- ── Global dropdown tracker (THE FIX) ────────────────────────────────────
+-- ── Global dropdown tracker ───────────────────────────────────────────────
 local _openDropdowns = {}
 
 local function closeAllDropdowns()
@@ -33,8 +42,8 @@ local function unregisterDropdown(closeFn)
         end
     end
 end
--- ─────────────────────────────────────────────────────────────────────────
 
+-- ── Config persistence ────────────────────────────────────────────────────
 local function getSavePath() return saveFolder .. "/" .. saveFile .. ".json" end
 
 local function saveConfig()
@@ -56,6 +65,7 @@ local function loadConfig()
     return (ok and r) or {}
 end
 
+-- ── Safe GUI parenting ────────────────────────────────────────────────────
 local function safeParent(gui)
     local ok = pcall(function() gui.Parent = game:GetService("CoreGui") end)
     if ok and gui.Parent then return end
@@ -129,19 +139,19 @@ function DevNgg:Destroy()
     if mainFrame then mainFrame.Parent:Destroy() end
 end
 
--- ── Notification ──────────────────────────────────────────────────────────
+-- ── Notification (max 5 stacked) ──────────────────────────────────────────
 local notifGui = Instance.new("ScreenGui")
 notifGui.Name             = "DevNggNotif"
 notifGui.ResetOnSpawn     = false
 notifGui.ZIndexBehavior   = Enum.ZIndexBehavior.Sibling
-pcall(function() notifGui.DisplayOrder  = 999 end)
+pcall(function() notifGui.DisplayOrder   = 999 end)
 pcall(function() notifGui.IgnoreGuiInset = true end)
 safeParent(notifGui)
 
 local nHolder = Instance.new("Frame", notifGui)
-nHolder.Name                = "NotifHolder"
-nHolder.Size                = UDim2.new(0, 278, 1, 0)
-nHolder.Position            = UDim2.new(1, -292, 0, 0)
+nHolder.Name                   = "NotifHolder"
+nHolder.Size                   = UDim2.new(0, 278, 1, 0)
+nHolder.Position               = UDim2.new(1, -292, 0, 0)
 nHolder.BackgroundTransparency = 1
 
 local nLayout = Instance.new("UIListLayout", nHolder)
@@ -153,7 +163,13 @@ nLayout.Padding             = UDim.new(0, 6)
 local nPad = Instance.new("UIPadding", nHolder)
 nPad.PaddingBottom = UDim.new(0, 20)
 
+local activeNotifCount = 0
+local MAX_NOTIFS = 5
+
 function DevNgg:Notify(cfg)
+    if activeNotifCount >= MAX_NOTIFS then return end
+    activeNotifCount += 1
+
     local title    = cfg.Title    or "DevN.gg"
     local content  = cfg.Content  or ""
     local duration = cfg.Duration or 3
@@ -224,6 +240,7 @@ function DevNgg:Notify(cfg)
         tw(sLbl,  MED, { TextTransparency = 1 })
         task.wait(0.22)
         card:Destroy()
+        activeNotifCount -= 1
     end)
 end
 
@@ -243,7 +260,7 @@ function DevNgg:CreateWindow(config)
     screenGui.Name             = "DevNggGUI"
     screenGui.ResetOnSpawn     = false
     screenGui.ZIndexBehavior   = Enum.ZIndexBehavior.Sibling
-    pcall(function() screenGui.DisplayOrder  = 999 end)
+    pcall(function() screenGui.DisplayOrder   = 999 end)
     pcall(function() screenGui.IgnoreGuiInset = true end)
     safeParent(screenGui)
 
@@ -271,16 +288,16 @@ function DevNgg:CreateWindow(config)
 
     -- Shadow
     local shadow = Instance.new("ImageLabel", main)
-    shadow.AnchorPoint         = Vector2.new(0.5, 0.5)
-    shadow.Size                = UDim2.new(1, 54, 1, 54)
-    shadow.Position            = UDim2.new(0.5, 0, 0.5, 7)
+    shadow.AnchorPoint            = Vector2.new(0.5, 0.5)
+    shadow.Size                   = UDim2.new(1, 54, 1, 54)
+    shadow.Position               = UDim2.new(0.5, 0, 0.5, 7)
     shadow.BackgroundTransparency = 1
-    shadow.Image               = "rbxassetid://6014054385"
-    shadow.ImageColor3         = Color3.new(0, 0, 0)
-    shadow.ImageTransparency   = 0.65
-    shadow.ScaleType           = Enum.ScaleType.Slice
-    shadow.SliceCenter         = Rect.new(49, 49, 450, 450)
-    shadow.ZIndex              = 0
+    shadow.Image                  = "rbxassetid://6014054385"
+    shadow.ImageColor3            = Color3.new(0, 0, 0)
+    shadow.ImageTransparency      = 0.65
+    shadow.ScaleType              = Enum.ScaleType.Slice
+    shadow.SliceCenter            = Rect.new(49, 49, 450, 450)
+    shadow.ZIndex                 = 0
 
     -- Header
     local header = Instance.new("Frame", main)
@@ -293,7 +310,7 @@ function DevNgg:CreateWindow(config)
     titleLbl.Position               = UDim2.new(0, 16, 0, 10)
     titleLbl.BackgroundTransparency = 1
     titleLbl.Text                   = winTitle
-    titleLbl.TextColor3             = Color3.fromRGB(255,255,255)
+    titleLbl.TextColor3             = Color3.fromRGB(255, 255, 255)
     titleLbl.TextSize               = 19
     titleLbl.Font                   = Enum.Font.GothamBold
     titleLbl.TextXAlignment         = Enum.TextXAlignment.Left
@@ -331,6 +348,7 @@ function DevNgg:CreateWindow(config)
     local closeBtn = mkCtrl(-38, "×", C.RED)
     local minBtn   = mkCtrl(-70, "−", C.AMBER)
 
+    -- × hides GUI; press K to bring it back
     closeBtn.MouseButton1Click:Connect(function()
         DevNgg:SetVisibility(false)
     end)
@@ -362,11 +380,11 @@ function DevNgg:CreateWindow(config)
 
     -- Content clip
     local clipFrame = Instance.new("Frame", main)
-    clipFrame.Name                = "ClipFrame"
-    clipFrame.Size                = UDim2.new(1, 0, 1, -112)
-    clipFrame.Position            = UDim2.new(0, 0, 0, 112)
+    clipFrame.Name                   = "ClipFrame"
+    clipFrame.Size                   = UDim2.new(1, 0, 1, -112)
+    clipFrame.Position               = UDim2.new(0, 0, 0, 112)
     clipFrame.BackgroundTransparency = 1
-    clipFrame.ClipsDescendants    = true
+    clipFrame.ClipsDescendants       = true
 
     local minimized = false
     local tabs      = {}
@@ -374,9 +392,7 @@ function DevNgg:CreateWindow(config)
     local tabCount  = 0
 
     local function switchTab(tab)
-        -- ★ DROPDOWN FIX: close any open dropdowns before switching
         closeAllDropdowns()
-
         for _, t in ipairs(tabs) do
             t.content.Visible = false
             tw(t.btn, FAST, { BackgroundColor3 = C.SURFACE, TextColor3 = C.TEXT_DIM })
@@ -386,7 +402,6 @@ function DevNgg:CreateWindow(config)
         activeTab = tab
         tw(tab.btn, FAST, { BackgroundColor3 = C.SURFACE, TextColor3 = C.TEXT })
         tab.indicator.BackgroundTransparency = 0
-
         local h = math.min(112 + tab.listLayout.AbsoluteContentSize.Y + 20, 600)
         main.Size      = UDim2.new(0, 530, 0, h)
         clipFrame.Size = UDim2.new(1, 0, 0, h - 112)
@@ -411,11 +426,14 @@ function DevNgg:CreateWindow(config)
         minBtn.Text = minimized and "+" or "−"
     end)
 
+    -- K key toggles GUI — works even after × close
     UserInputService.InputBegan:Connect(function(input, gpe)
         if gpe then return end
         pcall(function()
             local key = typeof(toggleKey) == "string" and Enum.KeyCode[toggleKey] or toggleKey
-            if input.KeyCode == key then DevNgg:SetVisibility(not guiVisible) end
+            if input.KeyCode == key then
+                DevNgg:SetVisibility(not guiVisible)
+            end
         end)
     end)
 
@@ -423,23 +441,30 @@ function DevNgg:CreateWindow(config)
     local dragging, dragStart, startPos
     header.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true; dragStart = input.Position; startPos = main.Position
+            dragging  = true
+            dragStart = input.Position
+            startPos  = main.Position
         end
     end)
     UserInputService.InputChanged:Connect(function(input)
         if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
             closeAllDropdowns()
             local d = input.Position - dragStart
-            main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+            main.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + d.X,
+                startPos.Y.Scale, startPos.Y.Offset + d.Y
+            )
         end
     end)
     UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
     end)
 
     local Window = {}
 
-    -- ── CreateTab ────────────────────────────────────────────────────────────
+    -- ── CreateTab ─────────────────────────────────────────────────────────
     function Window:CreateTab(name, _icon)
         tabCount += 1
         local tabIndex = tabCount
@@ -457,21 +482,21 @@ function DevNgg:CreateWindow(config)
         btn.LayoutOrder      = tabIndex
 
         local indicator = Instance.new("Frame", btn)
-        indicator.Size             = UDim2.new(1, 0, 0, 2)
-        indicator.Position         = UDim2.new(0, 0, 1, -2)
-        indicator.BackgroundColor3 = C.ACCENT
-        indicator.BorderSizePixel  = 0
+        indicator.Size                   = UDim2.new(1, 0, 0, 2)
+        indicator.Position               = UDim2.new(0, 0, 1, -2)
+        indicator.BackgroundColor3       = C.ACCENT
+        indicator.BorderSizePixel        = 0
         indicator.BackgroundTransparency = 1
 
         local tabContent = Instance.new("ScrollingFrame", clipFrame)
-        tabContent.Size                  = UDim2.new(1, 0, 1, 0)
+        tabContent.Size                   = UDim2.new(1, 0, 1, 0)
         tabContent.BackgroundTransparency = 1
-        tabContent.BorderSizePixel       = 0
-        tabContent.ScrollBarThickness    = 3
-        tabContent.ScrollBarImageColor3  = C.BORDER2
-        tabContent.CanvasSize            = UDim2.new(0, 0, 0, 0)
-        tabContent.AutomaticCanvasSize   = Enum.AutomaticSize.Y
-        tabContent.Visible               = false
+        tabContent.BorderSizePixel        = 0
+        tabContent.ScrollBarThickness     = 3
+        tabContent.ScrollBarImageColor3   = C.BORDER2
+        tabContent.CanvasSize             = UDim2.new(0, 0, 0, 0)
+        tabContent.AutomaticCanvasSize    = Enum.AutomaticSize.Y
+        tabContent.Visible                = false
 
         local tabLL = Instance.new("UIListLayout", tabContent)
         tabLL.Padding             = UDim.new(0, 3)
@@ -511,7 +536,7 @@ function DevNgg:CreateWindow(config)
         -- Section
         function Tab:CreateSection(sName)
             local row = Instance.new("Frame", content)
-            row.Size                  = UDim2.new(1, 0, 0, 20)
+            row.Size                   = UDim2.new(1, 0, 0, 20)
             row.BackgroundTransparency = 1
 
             local line = Instance.new("Frame", row)
@@ -562,18 +587,19 @@ function DevNgg:CreateWindow(config)
             stroke(f, C.BORDER, 1)
 
             local lbl = Instance.new("TextLabel", f)
-            lbl.Size             = UDim2.new(1, -22, 1, 0)
-            lbl.Position         = UDim2.new(0, 11, 0, 0)
+            lbl.Size                   = UDim2.new(1, -22, 1, 0)
+            lbl.Position               = UDim2.new(0, 11, 0, 0)
             lbl.BackgroundTransparency = 1
-            lbl.Text             = cfg.Text or ""
-            lbl.TextColor3       = C.TEXT_MID
-            lbl.TextSize         = 12
-            lbl.Font             = Enum.Font.Gotham
-            lbl.TextXAlignment   = Enum.TextXAlignment.Left
-            lbl.TextWrapped      = true
+            lbl.Text                   = cfg.Text or ""
+            lbl.TextColor3             = C.TEXT_MID
+            lbl.TextSize               = 12
+            lbl.Font                   = Enum.Font.Gotham
+            lbl.TextXAlignment         = Enum.TextXAlignment.Left
+            lbl.TextWrapped            = true
 
             local L = {}
             function L:Set(t) lbl.Text = t end
+            function L:SetColor(c) lbl.TextColor3 = c end
             return L
         end
 
@@ -725,10 +751,11 @@ function DevNgg:CreateWindow(config)
             local I = {}
             function I:GetValue() return box.Text end
             function I:SetValue(v) box.Text = v end
+            function I:Clear() box.Text = "" end
             return I
         end
 
-        -- ── Dropdown (FIXED) ──────────────────────────────────────────────
+        -- ── Dropdown ──────────────────────────────────────────────────────
         function Tab:CreateDropdown(cfg)
             local options  = cfg.Options or {}
             local selected = cfg.Default or ""
@@ -774,7 +801,6 @@ function DevNgg:CreateWindow(config)
             arrow.TextSize               = 12
             arrow.Font                   = Enum.Font.GothamBold
 
-            -- Drop list lives in screenGui — floats above everything
             local dropList = Instance.new("Frame", screenGui)
             dropList.BackgroundColor3 = C.SURFACE2
             dropList.BorderSizePixel  = 0
@@ -784,14 +810,14 @@ function DevNgg:CreateWindow(config)
             stroke(dropList, C.BORDER2, 1)
 
             local dropSF = Instance.new("ScrollingFrame", dropList)
-            dropSF.Size                  = UDim2.new(1, 0, 1, 0)
+            dropSF.Size                   = UDim2.new(1, 0, 1, 0)
             dropSF.BackgroundTransparency = 1
-            dropSF.BorderSizePixel       = 0
-            dropSF.ScrollBarThickness    = 2
-            dropSF.ScrollBarImageColor3  = C.BORDER2
-            dropSF.CanvasSize            = UDim2.new(0, 0, 0, 0)
-            dropSF.AutomaticCanvasSize   = Enum.AutomaticSize.Y
-            dropSF.ZIndex                = 61
+            dropSF.BorderSizePixel        = 0
+            dropSF.ScrollBarThickness     = 2
+            dropSF.ScrollBarImageColor3   = C.BORDER2
+            dropSF.CanvasSize             = UDim2.new(0, 0, 0, 0)
+            dropSF.AutomaticCanvasSize    = Enum.AutomaticSize.Y
+            dropSF.ZIndex                 = 61
 
             local dropLL = Instance.new("UIListLayout", dropSF)
             dropLL.SortOrder = Enum.SortOrder.LayoutOrder
@@ -813,16 +839,16 @@ function DevNgg:CreateWindow(config)
                 unregisterDropdown(closeDropdown)
             end
 
+            -- Always rebuilds the visual list (v2.1 fix — no isOpen gate)
             local function refreshList()
                 for _, c in ipairs(dropSF:GetChildren()) do
                     if c:IsA("TextButton") or c:IsA("TextLabel") then c:Destroy() end
                 end
-                local count = math.max(#options, 1)
                 if #options == 0 then
                     local e = Instance.new("TextLabel", dropSF)
                     e.Size                   = UDim2.new(1, 0, 0, 32)
                     e.BackgroundTransparency = 1
-                    e.Text                   = "  No options"
+                    e.Text                   = "  (empty)"
                     e.TextColor3             = C.TEXT_DIM
                     e.TextSize               = 11
                     e.Font                   = Enum.Font.Gotham
@@ -860,31 +886,24 @@ function DevNgg:CreateWindow(config)
                             tw(item, FAST, { BackgroundColor3 = C.SURFACE2, TextColor3 = isSel and C.TEXT or C.TEXT_MID })
                         end)
                         item.MouseButton1Click:Connect(function()
-                            selected = opt
+                            selected       = opt
                             btn.Text       = opt
                             btn.TextColor3 = C.TEXT
                             closeDropdown()
                             if cfg.Callback then cfg.Callback(opt) end
                         end)
                     end
-                    count = #options
                 end
-                local listH = math.min(count * 34 + 8, 196)
+                local listH = math.min(math.max(#options, 1) * 34 + 8, 196)
                 dropList.Size = UDim2.new(0, btn.AbsoluteSize.X, 0, listH)
             end
 
             btn.MouseButton1Click:Connect(function()
-                if isOpen then
-                    closeDropdown()
-                    return
-                end
-                -- Close any other open dropdown first
+                if isOpen then closeDropdown() return end
                 closeAllDropdowns()
-
                 isOpen = true
                 registerDropdown(closeDropdown)
                 refreshList()
-
                 local absPos  = btn.AbsolutePosition
                 local absSize = btn.AbsoluteSize
                 local listH   = math.min(math.max(#options, 1) * 34 + 8, 196)
@@ -901,22 +920,66 @@ function DevNgg:CreateWindow(config)
                 if not isOpen then tw(btn, FAST, { BackgroundColor3 = C.SURFACE }) end
             end)
 
+            -- v2.1: always rebuilds, resets selected if no longer valid
             function Dropdown:SetOptions(newOpts)
                 options = newOpts
-                if isOpen then refreshList() end
+                local stillValid = false
+                for _, o in ipairs(options) do
+                    if o == selected then stillValid = true break end
+                end
+                if not stillValid then
+                    selected       = ""
+                    btn.Text       = "Select..."
+                    btn.TextColor3 = C.TEXT_DIM
+                end
+                refreshList()
             end
+
+            -- Add a single item without full SetOptions rebuild
+            function Dropdown:AddOption(opt)
+                for _, o in ipairs(options) do
+                    if o == opt then return end
+                end
+                table.insert(options, opt)
+                refreshList()
+            end
+
+            -- Remove a single item by value
+            function Dropdown:RemoveOption(opt)
+                for i, o in ipairs(options) do
+                    if o == opt then
+                        table.remove(options, i)
+                        if selected == opt then
+                            selected       = ""
+                            btn.Text       = "Select..."
+                            btn.TextColor3 = C.TEXT_DIM
+                        end
+                        refreshList()
+                        return
+                    end
+                end
+            end
+
             function Dropdown:GetSelected() return selected end
+            function Dropdown:GetOptions()  return options  end
+
             function Dropdown:SetSelected(val)
-                selected = val
+                selected       = val
                 btn.Text       = val ~= "" and val or "Select..."
                 btn.TextColor3 = val ~= "" and C.TEXT or C.TEXT_DIM
             end
+
             function Dropdown:Close() closeDropdown() end
 
             return Dropdown
         end
 
         return Tab
+    end
+
+    -- Read current flag value from outside
+    function Window:GetFlag(flag)
+        return flags[flag]
     end
 
     function Window:SetToggle(flag, value)
