@@ -13,8 +13,8 @@ local getgenv = getgenv or function() return shared end
 
 -- Config (EDIT THESE)
 local DISCORD   = 'discord.gg/NUvUBqpY'
-local KEY_URL   = 'https://your-key-link.com/getkey' -- << add your key link here
-local LOGO_URL  = 'https://your-logo-url.com/logo.png' -- << add your logo here
+local KEY_URL   = 'https://ads.luarmor.net/get_key?for=DevNGG_Linkvertise-spFShuBrrikz'
+local LOGO_URL  = 'https://your-logo-url.com/logo.png'
 local LOGO_FILE = 'DevNGG.png'
 local KEY_FILE  = 'DevNGG_Key.txt'
 local HUB_NAME  = 'DevN.GG'
