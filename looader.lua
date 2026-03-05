@@ -28,7 +28,7 @@ local scriptIds = {
 }
 
 local PROJECT_ID = '4d4ed9c55a9a9940554f89cadf145d52'
-local scriptId   = scriptIds[game.GameId] or PROJECT_ID
+local scriptId   = '2042ba1c01e9a8fea6fca11f79fc1346'
 
 -- Key save/load helpers
 local function getSavedKey()
