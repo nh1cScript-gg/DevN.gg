@@ -24,7 +24,7 @@ local luarmor = loadstring(game:HttpGet('https://sdkapi-public.luarmor.net/libra
 
 -- Game ID -> Script ID map (add your games here)
 local scriptIds = {
-    -- [GameId] = 'script_id_here',
+    -- [GameId] = '102438325176100',
 }
 
 local PROJECT_ID = '4d4ed9c55a9a9940554f89cadf145d52'
