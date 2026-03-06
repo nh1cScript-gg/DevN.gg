@@ -360,20 +360,18 @@ function DevNgg:CreateWindow(config)
         BackgroundColor3=C.BORDER,BackgroundTransparency=0.4,BorderSizePixel=0,ZIndex=6,
     },main)
 
-    -- Sidebar header (drag handle)
+    -- Sidebar header (drag handle) — bigger title, no subtitle
     local sHdr=make("Frame",{
         Size=UDim2.new(1,0,0,76),BackgroundColor3=C.HDR,
         BackgroundTransparency=T.HDR,BorderSizePixel=0,ZIndex=5,
     },side)
     make("TextLabel",{
-        Size=UDim2.new(1,-14,0,20),Position=UDim2.new(0,12,0,15),
+        Size=UDim2.new(1,-10,1,-16),Position=UDim2.new(0,10,0,8),
         BackgroundTransparency=1,Text=winTitle,TextColor3=C.TXT_A,
-        TextSize=15,Font=F.TITLE,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=6,
-    },sHdr)
-    make("TextLabel",{
-        Size=UDim2.new(1,-14,0,14),Position=UDim2.new(0,12,0,39),
-        BackgroundTransparency=1,Text=winSub.."  "..winVer,TextColor3=C.TXT_C,
-        TextSize=10,Font=F.LIGHT,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=6,
+        TextSize=28,Font=F.TITLE,
+        TextXAlignment=Enum.TextXAlignment.Left,
+        TextYAlignment=Enum.TextYAlignment.Center,
+        ZIndex=6,
     },sHdr)
     make("Frame",{
         Size=UDim2.new(1,-20,0,1),Position=UDim2.new(0,10,1,-1),
