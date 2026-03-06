@@ -45,6 +45,7 @@ local collectLoopThread = nil
 local mergeLoopThread   = nil
 local autoCampaignThread    = nil
 local raidLoopThread    = nil
+local wishLoopThread    = nil
 
 -- Wish  (Mega Sparking only — list of targets, picks first found)
 local wishTargets    = {}   -- list of bare character names e.g. {"Zoono","Gojo"}
@@ -640,22 +641,9 @@ local function startAutoCampaignLoop()
 end
 
 -- ══════════════════════════════════════════════════════════════
--- SECTION 12: AUTO WISH (SHENRON) — v7.4 FULL REWRITE
---
--- CONFIRMED FLOW (from decompiled source):
---   1. UpdateDragonBallBackpack fires with count >= 7
---      → click SummonShenron GUI button + FireServer("SummonShenron")
---   2. ShenronWishes.OnClientEvent fires
---      → click SparkingWish frame's TextButton/ImageButton
---   3. SparkingChoose ScrollingFrame populates with unit cells
---      → cells are Frames/Buttons; their Name = bare unit name (e.g. "Zoono")
---        OR they contain a TextLabel whose Text = unit name
---      → we try BOTH strategies: name match + label text match
---   4. ConfirmSparkingSelection.Confirm clicked
---      → fallback: ClaimWish:FireServer("SparkingWish", {selectedCharacter=name})
---
--- wishTargets stores BARE names (e.g. "Zoono") — NO prefix needed
--- We auto-prefix "Mega Sparking " when firing ClaimWish remote
+-- SECTION 12: AUTO WISH
+-- CONFIRMED: ClaimWish:FireServer() works directly — unit goes
+-- straight to inventory. Auto loop fires it every 5 seconds.
 -- ══════════════════════════════════════════════════════════════
 
 -- Strips any tier prefix and returns the bare character name
@@ -668,158 +656,52 @@ local function getBareName(name)
         :match("^%s*(.-)%s*$")
 end
 
--- Returns the first wish target whose "Mega Sparking X" exists in Doodles
--- Falls back to the first target in the list regardless
+-- Returns bare + full name of the best wish target
 local function getBestWishTarget()
-    if #wishTargets == 0 then return nil end
+    if #wishTargets == 0 then return nil, nil end
     local doodles = ReplicatedStorage:FindFirstChild("Doodles")
     for _, entry in ipairs(wishTargets) do
         local bare = getBareName(entry)
         local full = "Mega Sparking " .. bare
         if doodles and doodles:FindFirstChild(full) then
-            return bare, full   -- return both bare and full name
+            return bare, full
         end
     end
-    -- fallback: use first target even if not confirmed in Doodles
     local bare = getBareName(wishTargets[1])
     return bare, "Mega Sparking " .. bare
 end
 
--- Deep-search PlayerGui for a named descendant
-local function findInGui(name)
-    -- direct search
-    local found = LocalPlayer.PlayerGui:FindFirstChild(name, true)
-    if found then return found end
-    -- extra: iterate all ScreenGuis
-    for _, sg in ipairs(LocalPlayer.PlayerGui:GetChildren()) do
-        local r = sg:FindFirstChild(name, true)
-        if r then return r end
+-- Fires ClaimWish directly — confirmed working
+local function fireClaimWish()
+    local bareName, fullName = getBestWishTarget()
+    if not bareName then
+        DevNgg:Notify({ Title = "No Targets", Content = "Add a unit in the Shenron tab first!", Duration = 4 })
+        return false
     end
-    return nil
-end
-
--- Clicks a GuiButton (tries both methods)
-local function clickBtn(btn)
-    if not btn then return false end
-    pcall(function() btn:activate() end)
-    pcall(function() btn.MouseButton1Click:Fire() end)
+    pcall(function()
+        Events.ClaimWish:FireServer("SparkingWish", { selectedCharacter = fullName })
+    end)
+    DevNgg:Notify({ Title = "Wish Sent!", Content = fullName, Duration = 3 })
     return true
 end
 
--- Finds the best matching cell in the SparkingChoose ScrollingFrame
--- Tries: exact Name match → partial Name match → TextLabel text match
-local function findUnitCell(scroll, bareName)
-    local lower = bareName:lower()
-    -- pass 1: exact name
-    local cell = scroll:FindFirstChild(bareName)
-    if cell then return cell end
-    -- pass 2: case-insensitive name
-    for _, c in ipairs(scroll:GetChildren()) do
-        if c.Name:lower() == lower then return c end
-    end
-    -- pass 3: name contains bare name
-    for _, c in ipairs(scroll:GetChildren()) do
-        if c.Name:lower():find(lower, 1, true) then return c end
-    end
-    -- pass 4: any TextLabel inside the cell whose text matches
-    for _, c in ipairs(scroll:GetChildren()) do
-        for _, lbl in ipairs(c:GetDescendants()) do
-            if (lbl:IsA("TextLabel") or lbl:IsA("TextButton")) then
-                local t = lbl.Text:lower()
-                if t == lower or t:find(lower, 1, true) then
-                    return c
-                end
+-- Auto loop: fires ClaimWish every 5 seconds while enabled
+local function startWishLoop()
+    if wishLoopThread then task.cancel(wishLoopThread) wishLoopThread = nil end
+    wishLoopThread = task.spawn(function()
+        while dragonBallAutoWish do
+            fireClaimWish()
+            for _ = 1, 50 do
+                if not dragonBallAutoWish then break end
+                task.wait(0.1)
             end
         end
-    end
-    return nil
+    end)
 end
 
--- Waits up to `timeout` seconds for a GUI element to appear, polling every 0.1s
-local function waitForGui(name, timeout)
-    local elapsed = 0
-    while elapsed < timeout do
-        local found = findInGui(name)
-        if found then return found end
-        task.wait(0.15)
-        elapsed = elapsed + 0.15
-    end
-    return nil
+local function stopWishLoop()
+    if wishLoopThread then task.cancel(wishLoopThread) wishLoopThread = nil end
 end
-
--- ── AUTO WISH: fires when backpack hits 7 balls ──────────────
--- Confirmed working: ClaimWish:FireServer() does NOT require GUI clicks.
--- Flow: SummonShenron remote → wait for ShenronWishes event → ClaimWish remote
-Events.UpdateDragonBallBackpack.OnClientEvent:Connect(function(count)
-    if not dragonBallAutoWish then return end
-    if count < 7 then return end
-    if isCollecting then return end
-
-    isCollecting = true
-
-    task.spawn(function()
-        task.wait(0.5)
-
-        -- Step 1: Summon Shenron
-        pcall(function() Events.SummonShenron:FireServer() end)
-        DevNgg:Notify({
-            Title   = "🐉 Summoning Shenron!",
-            Content = "7 balls collected — wishing now!",
-            Duration = 3,
-        })
-
-        -- Step 2: Wait a moment for the server to process, then claim wish directly
-        task.wait(2)
-
-        local bareName, fullName = getBestWishTarget()
-        if not bareName then
-            DevNgg:Notify({ Title = "⚠ No Wish Targets", Content = "Add a unit in the Shenron tab!", Duration = 4 })
-            isCollecting = false
-            return
-        end
-
-        pcall(function()
-            Events.ClaimWish:FireServer("SparkingWish", { selectedCharacter = fullName })
-        end)
-
-        DevNgg:Notify({
-            Title   = "✨ Wish Granted!",
-            Content = "Got: " .. fullName,
-            Duration = 4,
-        })
-
-        isCollecting = false
-        task.wait(0.5)
-        if dragonBallAutoHop then task.spawn(serverHop) end
-    end)
-end)
-
--- ShenronWishes event listener (fires after SummonShenron is accepted by server)
--- We handle everything above already, but this catches edge cases where
--- Shenron was summoned manually or by another trigger
-Events.ShenronWishes.OnClientEvent:Connect(function()
-    if not dragonBallAutoWish then return end
-    if isCollecting then return end  -- already handled by the backpack listener
-
-    local bareName, fullName = getBestWishTarget()
-    if not bareName then return end
-
-    task.spawn(function()
-        task.wait(1)
-        pcall(function()
-            Events.ClaimWish:FireServer("SparkingWish", { selectedCharacter = fullName })
-        end)
-        DevNgg:Notify({
-            Title   = "✨ Wish Granted!",
-            Content = "Got: " .. fullName,
-            Duration = 4,
-        })
-        isCollecting = false
-        task.wait(0.5)
-        if dragonBallAutoHop then task.spawn(serverHop) end
-    end)
-end)
-
 -- SECTION 13: AUTO MERGE
 -- ══════════════════════════════════════════════════════════════
 
@@ -1389,61 +1271,43 @@ WishTab:CreateButton({
     end,
 })
 
--- ── Section: Automation ───────────────────────────────────────
+-- ── Section: Automation ─────────────────────────────────────
 WishTab:CreateSection("Automation")
 
 WishTab:CreateToggle({
-    Name         = "Auto Wish on 7 Balls",
+    Name         = "Auto Wish (Fully Automatic)",
     CurrentValue = false,
     Flag         = "AutoWish",
     Callback     = function(enabled)
         if enabled and #wishTargets == 0 then
             DevNgg:Notify({
-                Title   = "⚠ No Targets!",
+                Title   = "No Targets!",
                 Content = "Add at least one unit to the wish list first!",
                 Duration = 4,
             })
-            -- Don't actually enable — force toggle back off
             dragonBallAutoWish = false
             return
         end
         dragonBallAutoWish = enabled
-        local first = #wishTargets > 0 and ("Mega Sparking " .. getBareName(wishTargets[1])) or "none"
-        DevNgg:Notify({
-            Title   = enabled and "✅ Auto Wish — ON" or "Auto Wish — OFF",
-            Content = enabled and ("Priority: " .. first) or "Disabled.",
-            Duration = 3,
-        })
+        if enabled then
+            local _, fullName = getBestWishTarget()
+            startWishLoop()
+            DevNgg:Notify({
+                Title   = "Auto Wish — ON",
+                Content = "Wishing for: " .. (fullName or "none") .. " every 5s!",
+                Duration = 4,
+            })
+        else
+            stopWishLoop()
+            DevNgg:Notify({ Title = "Auto Wish — OFF", Content = "Stopped.", Duration = 3 })
+        end
     end,
 })
 
 WishTab:CreateButton({
-    Name     = "🐉 Summon Shenron Now",
+    Name     = "Wish Now (Manual)",
     Callback = function()
-        isCollecting = true
-        -- Try GUI button first
-        local summonBtn = findInGui("SummonShenron")
-        if summonBtn and summonBtn:IsA("GuiButton") then
-            clickBtn(summonBtn)
-        end
-        pcall(function() Events.SummonShenron:FireServer() end)
-        DevNgg:Notify({ Title = "🐉 Summoning!", Content = "Shenron summoned. Waiting for wish screen...", Duration = 3 })
-        task.delay(15, function() if isCollecting then isCollecting = false end end)
-    end,
-})
-
-WishTab:CreateButton({
-    Name     = "✨ Wish Now (skip to ClaimWish remote)",
-    Callback = function()
-        local bareName, fullName = getBestWishTarget()
-        if not bareName then
-            DevNgg:Notify({ Title = "⚠ No Targets", Content = "Add a unit first!", Duration = 3 })
-            return
-        end
-        pcall(function()
-            Events.ClaimWish:FireServer("SparkingWish", { selectedCharacter = fullName })
-        end)
-        DevNgg:Notify({ Title = "✨ Wish Sent!", Content = fullName, Duration = 3 })
+        fireClaimWish()
     end,
 })
 
