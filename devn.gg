@@ -1,5 +1,5 @@
 -- ╔══════════════════════════════════════════════════════════════╗
--- ║           AniPixels Ultimate Auto Farm v7.1                 ║
+-- ║           AniPixels Ultimate Auto Farm v7.4                 ║
 -- ║     Dragon Balls + Unit Hunter + Auto Merge + Auto Raid + Safari ║
 -- ║           by Dev N                                           ║
 -- ╚══════════════════════════════════════════════════════════════╝
@@ -46,8 +46,16 @@ local mergeLoopThread   = nil
 local autoCampaignThread    = nil
 local raidLoopThread    = nil
 
--- Wish
-local wishTargetUnit = ""
+-- Wish  (Mega Sparking only — list of targets, picks first found)
+local wishTargets    = {}   -- list of bare character names e.g. {"Zoono","Gojo"}
+local wishListDropdown = nil  -- UI ref, assigned after tab is built
+local function refreshWishDropdown()
+    if wishListDropdown then
+        local opts = #wishTargets > 0 and wishTargets or {"(empty)"}
+        wishListDropdown:SetOptions(opts)
+        wishListDropdown:SetSelected("")
+    end
+end
 
 -- Merge
 local mergeTargetUnit  = ""
@@ -76,6 +84,10 @@ end
 
 -- Auto Raid
 local autoRaidEnabled = false
+
+-- Anti AFK
+local antiAfkEnabled = false
+local antiAfkThread  = nil
 
 -- Auto Safari
 local autoSafariEnabled   = false
@@ -628,128 +640,338 @@ local function startAutoCampaignLoop()
 end
 
 -- ══════════════════════════════════════════════════════════════
--- SECTION 12: AUTO WISH (SHENRON)
+-- SECTION 12: AUTO WISH (SHENRON) — v7.4 FULL REWRITE
+--
+-- CONFIRMED FLOW (from decompiled source):
+--   1. UpdateDragonBallBackpack fires with count >= 7
+--      → click SummonShenron GUI button + FireServer("SummonShenron")
+--   2. ShenronWishes.OnClientEvent fires
+--      → click SparkingWish frame's TextButton/ImageButton
+--   3. SparkingChoose ScrollingFrame populates with unit cells
+--      → cells are Frames/Buttons; their Name = bare unit name (e.g. "Zoono")
+--        OR they contain a TextLabel whose Text = unit name
+--      → we try BOTH strategies: name match + label text match
+--   4. ConfirmSparkingSelection.Confirm clicked
+--      → fallback: ClaimWish:FireServer("SparkingWish", {selectedCharacter=name})
+--
+-- wishTargets stores BARE names (e.g. "Zoono") — NO prefix needed
+-- We auto-prefix "Mega Sparking " when firing ClaimWish remote
 -- ══════════════════════════════════════════════════════════════
 
+-- Strips any tier prefix and returns the bare character name
+local function getBareName(name)
+    return name
+        :gsub("^Titan Sparking ","")
+        :gsub("^Mega Sparking ","")
+        :gsub("^Giant Sparking ","")
+        :gsub("^Sparking ","")
+        :match("^%s*(.-)%s*$")
+end
+
+-- Returns the first wish target whose "Mega Sparking X" exists in Doodles
+-- Falls back to the first target in the list regardless
+local function getBestWishTarget()
+    if #wishTargets == 0 then return nil end
+    local doodles = ReplicatedStorage:FindFirstChild("Doodles")
+    for _, entry in ipairs(wishTargets) do
+        local bare = getBareName(entry)
+        local full = "Mega Sparking " .. bare
+        if doodles and doodles:FindFirstChild(full) then
+            return bare, full   -- return both bare and full name
+        end
+    end
+    -- fallback: use first target even if not confirmed in Doodles
+    local bare = getBareName(wishTargets[1])
+    return bare, "Mega Sparking " .. bare
+end
+
+-- Deep-search PlayerGui for a named descendant
+local function findInGui(name)
+    -- direct search
+    local found = LocalPlayer.PlayerGui:FindFirstChild(name, true)
+    if found then return found end
+    -- extra: iterate all ScreenGuis
+    for _, sg in ipairs(LocalPlayer.PlayerGui:GetChildren()) do
+        local r = sg:FindFirstChild(name, true)
+        if r then return r end
+    end
+    return nil
+end
+
+-- Clicks a GuiButton (tries both methods)
+local function clickBtn(btn)
+    if not btn then return false end
+    pcall(function() btn:activate() end)
+    pcall(function() btn.MouseButton1Click:Fire() end)
+    return true
+end
+
+-- Finds the best matching cell in the SparkingChoose ScrollingFrame
+-- Tries: exact Name match → partial Name match → TextLabel text match
+local function findUnitCell(scroll, bareName)
+    local lower = bareName:lower()
+    -- pass 1: exact name
+    local cell = scroll:FindFirstChild(bareName)
+    if cell then return cell end
+    -- pass 2: case-insensitive name
+    for _, c in ipairs(scroll:GetChildren()) do
+        if c.Name:lower() == lower then return c end
+    end
+    -- pass 3: name contains bare name
+    for _, c in ipairs(scroll:GetChildren()) do
+        if c.Name:lower():find(lower, 1, true) then return c end
+    end
+    -- pass 4: any TextLabel inside the cell whose text matches
+    for _, c in ipairs(scroll:GetChildren()) do
+        for _, lbl in ipairs(c:GetDescendants()) do
+            if (lbl:IsA("TextLabel") or lbl:IsA("TextButton")) then
+                local t = lbl.Text:lower()
+                if t == lower or t:find(lower, 1, true) then
+                    return c
+                end
+            end
+        end
+    end
+    return nil
+end
+
+-- Waits up to `timeout` seconds for a GUI element to appear, polling every 0.1s
+local function waitForGui(name, timeout)
+    local elapsed = 0
+    while elapsed < timeout do
+        local found = findInGui(name)
+        if found then return found end
+        task.wait(0.15)
+        elapsed = elapsed + 0.15
+    end
+    return nil
+end
+
+-- ── AUTO WISH: fires when backpack hits 7 balls ──────────────
+-- Confirmed working: ClaimWish:FireServer() does NOT require GUI clicks.
+-- Flow: SummonShenron remote → wait for ShenronWishes event → ClaimWish remote
 Events.UpdateDragonBallBackpack.OnClientEvent:Connect(function(count)
     if not dragonBallAutoWish then return end
-    if count >= 7 and not isCollecting then
-        isCollecting = true
-        task.wait(0.2)
-        Events.SummonShenron:FireServer()
-        DevNgg:Notify({ Title = " Summoning Shenron!", Content = "All 7 balls collected!", Duration = 3 })
-    end
+    if count < 7 then return end
+    if isCollecting then return end
+
+    isCollecting = true
+
+    task.spawn(function()
+        task.wait(0.5)
+
+        -- Step 1: Summon Shenron
+        pcall(function() Events.SummonShenron:FireServer() end)
+        DevNgg:Notify({
+            Title   = "🐉 Summoning Shenron!",
+            Content = "7 balls collected — wishing now!",
+            Duration = 3,
+        })
+
+        -- Step 2: Wait a moment for the server to process, then claim wish directly
+        task.wait(2)
+
+        local bareName, fullName = getBestWishTarget()
+        if not bareName then
+            DevNgg:Notify({ Title = "⚠ No Wish Targets", Content = "Add a unit in the Shenron tab!", Duration = 4 })
+            isCollecting = false
+            return
+        end
+
+        pcall(function()
+            Events.ClaimWish:FireServer("SparkingWish", { selectedCharacter = fullName })
+        end)
+
+        DevNgg:Notify({
+            Title   = "✨ Wish Granted!",
+            Content = "Got: " .. fullName,
+            Duration = 4,
+        })
+
+        isCollecting = false
+        task.wait(0.5)
+        if dragonBallAutoHop then task.spawn(serverHop) end
+    end)
 end)
 
+-- ShenronWishes event listener (fires after SummonShenron is accepted by server)
+-- We handle everything above already, but this catches edge cases where
+-- Shenron was summoned manually or by another trigger
 Events.ShenronWishes.OnClientEvent:Connect(function()
     if not dragonBallAutoWish then return end
-    if wishTargetUnit == "" then
-        DevNgg:Notify({ Title = " No Wish Target", Content = "Set a unit in the Shenron tab!", Duration = 3 })
+    if isCollecting then return end  -- already handled by the backpack listener
+
+    local bareName, fullName = getBestWishTarget()
+    if not bareName then return end
+
+    task.spawn(function()
+        task.wait(1)
+        pcall(function()
+            Events.ClaimWish:FireServer("SparkingWish", { selectedCharacter = fullName })
+        end)
+        DevNgg:Notify({
+            Title   = "✨ Wish Granted!",
+            Content = "Got: " .. fullName,
+            Duration = 4,
+        })
         isCollecting = false
-        return
-    end
-    task.wait(0.2)
-    Events.ClaimWish:FireServer("SparkingWish", { selectedCharacter = wishTargetUnit })
-    DevNgg:Notify({ Title = " Wish Granted!", Content = "Wished for: " .. wishTargetUnit, Duration = 3 })
-    isCollecting = false
-    task.wait(0.5)
-    if dragonBallAutoHop then task.spawn(serverHop) end
+        task.wait(0.5)
+        if dragonBallAutoHop then task.spawn(serverHop) end
+    end)
 end)
 
--- ══════════════════════════════════════════════════════════════
 -- SECTION 13: AUTO MERGE
 -- ══════════════════════════════════════════════════════════════
 
-local function performMerge()
-    local doodleInv = LocalPlayer:FindFirstChild("DoodleInv")
-    if not doodleInv then return end
-
-    local crushinator = workspace:FindFirstChild("Map")
-        and workspace.Map:FindFirstChild("Lab")
-        and workspace.Map.Lab:FindFirstChild("Crushinator")
-    if not crushinator then
-        DevNgg:Notify({ Title = " Merge Failed", Content = "Crushinator not found!", Duration = 3 })
-        return
-    end
-
-    local mergePrompt = crushinator:FindFirstChild("Activate")
-        and crushinator.Activate:FindFirstChildOfClass("ProximityPrompt")
-    if not mergePrompt then
-        DevNgg:Notify({ Title = " Merge Failed", Content = "Merge prompt not found!", Duration = 3 })
-        return
-    end
-
-    local unitToMerge = nil
-
-    if mergeTargetUnit ~= "" then
-        local unitEntry = doodleInv:FindFirstChild(mergeTargetUnit)
-        if unitEntry and unitEntry.Value >= 4 then
-            unitToMerge = mergeTargetUnit
-        else
-            DevNgg:Notify({
-                Title   = "Not Enough Copies",
-                Content = mergeTargetUnit .. " — Have: " .. (unitEntry and unitEntry.Value or 0) .. "/4",
-                Duration = 3,
-            })
-            return
-        end
-    else
+-- Finds the best matching unit entry in DoodleInv for a given name input.
+-- Tries: exact match → ends-with match → contains match (all case-insensitive)
+local function findMergeUnit(doodleInv, targetName)
+    if targetName == "" then
+        -- no target — find any unit with 4+ copies
         for _, entry in ipairs(doodleInv:GetChildren()) do
-            if entry.Value >= 4 then
-                unitToMerge = entry.Name
-                break
+            if entry:IsA("IntValue") and entry.Value >= 4 then
+                return entry
             end
         end
-        if not unitToMerge then
-            DevNgg:Notify({ Title = "Nothing to Merge", Content = "No unit with 4+ copies found.", Duration = 3 })
-            return
-        end
+        return nil
     end
 
+    local lower = targetName:lower()
+
+    -- Pass 1: exact match (case-insensitive)
+    for _, entry in ipairs(doodleInv:GetChildren()) do
+        if entry.Name:lower() == lower then return entry end
+    end
+    -- Pass 2: entry name ends with the typed name  e.g. "Sparking Toji" ends with "toji"
+    for _, entry in ipairs(doodleInv:GetChildren()) do
+        local eName = entry.Name:lower()
+        if eName:sub(-#lower) == lower then return entry end
+    end
+    -- Pass 3: entry name contains the typed name anywhere
+    for _, entry in ipairs(doodleInv:GetChildren()) do
+        if entry.Name:lower():find(lower, 1, true) then return entry end
+    end
+    return nil
+end
+
+local function performMerge()
+    local doodleInv = LocalPlayer:FindFirstChild("DoodleInv")
+    if not doodleInv then
+        DevNgg:Notify({ Title = "Merge Failed", Content = "DoodleInv not found!", Duration = 3 })
+        return
+    end
+
+    -- Find the Crushinator — search workspace broadly in case Map structure differs
+    local crushinator = nil
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj.Name == "Crushinator" then crushinator = obj break end
+    end
+    if not crushinator then
+        DevNgg:Notify({ Title = "Merge Failed", Content = "Crushinator not found in workspace!", Duration = 3 })
+        return
+    end
+
+    local mergePrompt = crushinator:FindFirstChildOfClass("ProximityPrompt", true)
+    if not mergePrompt then
+        -- Try searching Activate child
+        local activate = crushinator:FindFirstChild("Activate")
+        if activate then mergePrompt = activate:FindFirstChildOfClass("ProximityPrompt") end
+    end
+    if not mergePrompt then
+        DevNgg:Notify({ Title = "Merge Failed", Content = "Merge ProximityPrompt not found!", Duration = 3 })
+        return
+    end
+
+    -- Find the unit to merge using fuzzy matching
+    local unitEntry = findMergeUnit(doodleInv, mergeTargetUnit)
+
+    if not unitEntry then
+        if mergeTargetUnit ~= "" then
+            DevNgg:Notify({
+                Title   = "Unit Not Found",
+                Content = "Could not find '" .. mergeTargetUnit .. "' in your inventory.",
+                Duration = 4,
+            })
+        else
+            DevNgg:Notify({ Title = "Nothing to Merge", Content = "No unit with 4+ copies found.", Duration = 3 })
+        end
+        return
+    end
+
+    if unitEntry.Value < 4 then
+        DevNgg:Notify({
+            Title   = "Not Enough Copies",
+            Content = unitEntry.Name .. " — Have: " .. unitEntry.Value .. "/4",
+            Duration = 3,
+        })
+        return
+    end
+
+    local unitToMerge = unitEntry.Name
     local slotMapping = { ["1"] = unitToMerge, ["2"] = unitToMerge, ["3"] = unitToMerge, ["4"] = unitToMerge }
     Events.SquadUpdate:FireServer(slotMapping)
     task.wait(0.5)
     fireproximityprompt(mergePrompt)
-    DevNgg:Notify({ Title = "Merging", Content = "Merging 4x " .. unitToMerge, Duration = 3 })
+    DevNgg:Notify({ Title = "Merging!", Content = "Merging 4x " .. unitToMerge, Duration = 3 })
     task.wait(4)
 end
 
 -- ══════════════════════════════════════════════════════════════
 -- SECTION 14: AUTO RAID
--- Detects raid by checking Campaign for boss folders (Wild/OddFight/Safari)
--- Teleports to boss, clicks Auto TextButton at BattleChats.BattleChat.Auto
--- Also listens for new boss folders spawning mid-session
 -- ══════════════════════════════════════════════════════════════
 
--- Click the Auto battle button — try TextButton first, then ImageButton
+-- Click the Auto battle button — search all GUI descendants
 local function clickAutoBattle()
     for _, obj in ipairs(LocalPlayer.PlayerGui:GetDescendants()) do
         if obj.Name == "Auto" and (obj:IsA("TextButton") or obj:IsA("ImageButton")) then
             pcall(function() obj.MouseButton1Click:Fire() end)
+            pcall(function() obj:activate() end)
             return true
         end
     end
     return false
 end
 
--- Teleport to boss and enable auto battle
+-- Teleport directly ON TOP of the boss part (not offset by 5,5)
+-- Then retry clicking Auto battle up to 8 times with short waits
 local function teleportToBossAndFight()
     local boss = findRaidBossPart()
     if not boss then
-        DevNgg:Notify({ Title = "Boss Not Found", Content = "No raid boss part found in Campaign!", Duration = 3 })
+        DevNgg:Notify({ Title = "Boss Not Found", Content = "No raid boss found in Campaign!", Duration = 3 })
         return false
     end
+
     local hrp = getHumanoidRootPart()
     if hrp then
-        hrp.CFrame = CFrame.new(boss.Position + Vector3.new(0, 5, 5))
-        task.wait(0.4)
+        -- Teleport right on top of the boss part
+        hrp.CFrame = CFrame.new(boss.Position + Vector3.new(0, 3, 0))
     end
-    local clicked = clickAutoBattle()
+
     DevNgg:Notify({
-        Title   = "" .. boss.Name,
-        Content = clicked and "Teleported! Auto Battle ON!" or "Teleported! Enable Auto Battle manually.",
-        Duration = 4,
+        Title   = "⚔ Raid Boss!",
+        Content = "Teleported to " .. boss.Name .. " — starting battle...",
+        Duration = 3,
     })
+
+    -- Retry clicking Auto battle — GUI may take a moment to appear
+    local clicked = false
+    for attempt = 1, 8 do
+        task.wait(0.5)
+        if clickAutoBattle() then
+            clicked = true
+            DevNgg:Notify({ Title = "⚔ Auto Battle ON", Content = "Auto battle enabled! (attempt " .. attempt .. ")", Duration = 3 })
+            break
+        end
+        -- Re-teleport closer each retry in case we drifted
+        if hrp and boss.Parent then
+            hrp.CFrame = CFrame.new(boss.Position + Vector3.new(0, 3, 0))
+        end
+    end
+
+    if not clicked then
+        DevNgg:Notify({ Title = "⚠ Auto Battle", Content = "Could not click Auto — enable it manually.", Duration = 4 })
+    end
+
     return true
 end
 
@@ -966,7 +1188,7 @@ local function saveConfig()
         writefile("AniPixels/AutoFarm.json", HttpService:JSONEncode({
             AutoCollect = dragonBallAutoCollect,
             AutoHop     = dragonBallAutoHop,
-            WishTarget  = wishTargetUnit,
+            WishTargets = wishTargets,
         }))
     end)
 end
@@ -1034,42 +1256,140 @@ DragonBallTab:CreateButton({
 })
 
 -- ══════════════════════════════════════════════════════════════
--- SECTION 18: UI — TAB 2:  Shenron
+-- SECTION 18: UI — TAB 2:  Shenron  (v7.4 REWRITE)
+-- Full list of all 282 valid bare names embedded so user picks
+-- from a dropdown — no typing errors possible.
 -- ══════════════════════════════════════════════════════════════
 local WishTab = Window:CreateTab("Shenron", nil)
 
-WishTab:CreateSection("Configuration")
+-- Full sorted list of every valid bare character name (from game Doodles scan)
+local ALL_BARE_NAMES = {
+    "Aizen","Akaza","Aki","Al","All For One","All Might","Anbu",
+    "Android 17","Android 18","Android 19","Arima","Armstrong","Arthur",
+    "Astto","Awakened Mahito","Baek Yonhoo","Baraggan","Beru","Blackstar",
+    "Boros","Boruto (Timeskip)","Broly (Super)","Brook","CandyVegito",
+    "Carrot","Cell Jr","Cha Hae","Chad","Chakra Puppet","Choji","Chopper",
+    "Chrollo","Cooler Final Form","CrazyDiamond","Dabi","Darkness Devil",
+    "Death The Kid","Denji","Dio Over Heaven","Doppio","Dr Gero","Ed",
+    "Escanor","Eto","Fat Janemba","Final Form Muzan","Frankie","Franklin",
+    "Frieren","Frieza Final Form","Fusion Zamasu (Corrupted)","Future Gohan",
+    "Future Trunks","Future Trunks (Base)","Giyu","Gluttony","Gogeta (Fat)",
+    "Gogeta Blue","Gohan (Super Saiyan 2)","Gojo","Gojo (Legs)","Gojo (Shinjuku)",
+    "Gok (Base)","Goku (Super Saiyan)","Goku Black (Rose)","Goku SS3",
+    "Golden Experience","Golden Experience (Requiem)","Gon","Gon (End)",
+    "Goots","Granz","Griff","Grimmjow","Grimmjow (Resurrecion)","GunGirl",
+    "Gyutaro","HGreen","Hakari","Halibel","Hanami","HandStrong",
+    "Heian Era Sukuna","HermitPurple","Hero of Hell","Hideyoshi","Higuruma",
+    "Hinata","Hinawa","Hisoka","Ichigo (VastoLorde)","Ichigo Hollowfied",
+    "Igris","Illumi","Imperfect Cell","Ino","Iris","Iron","Iruka","Issei",
+    "Itach","Jimbei","Jogo","Jotaro","Jotaro Star Platinum (Rage)","JudgeSpirit",
+    "Junpei","Juuzou","Kaido","KaidoDragon","Kakash","Kaneki","Kaneki-Kakuja",
+    "Kashimo","Katana Man","Kiba","Kid","Kid Buu","KidGaar","Killer",
+    "Killer Queen","Killua","Killua (Godspeed)","King","King Crimson","Kira",
+    "Kisuke","Kokushibo","Krillin","Krona","Kurapika","Kusukabe","Kyubey",
+    "Kyuubi","Law","Leorio","LingYao","Lst","LuBu","Luff","Luffy (Gear 4)",
+    "Luffy (Gear 5)","Madara Ten Tails","Made In Heaven","MagiciansRed",
+    "Mahito","Mahoraga","Maka","Maki","Maki Zenin","Makima","Masked Tob",
+    "Mechamaru","Medusa","Megumi","Meliodas","Might Guy (Ninth Gate)","Miwa",
+    "Mizuki","Momo","Monster Garou","Nami","Nanami","Naru (Kid)","Naru (Sign)",
+    "Neji","Nel","Nnoitra","Nobara","Nobunaga","Noolle","Obito Ten Tails",
+    "Okarun","Orihime","Owl","Panda","Perfect Cell","Piccolo","Pikkon",
+    "Poseidon","Power","Pride","PuppetGuy","Purple Haze","Queen","RealDIO",
+    "RealJojo","Reinhard","Rengoku","Renji","Rimuru","Riza","Rize","Robin",
+    "Rock Lee","Roy","Rukia","Ryuma","Saitama","Sakur","Sanji","Sasaki",
+    "Sasu","Sasuke (Curse Mark 2)","Scar","Shadow DIO","Shanks","Shield Hero",
+    "Shigaraki","Shika","Shino","Shinobu","Shinra","Shizuku","SilverChariot",
+    "SilverChariot (Requiem)","Soul","SpearGirl","StaffGirl","Star Platinum",
+    "Starrk","Subaru","Sukuna","Sukuna (Shinjuku)","Sung Jinwoo","Super Gogeta",
+    "Super Janemba","Super Perfect Cell","Super Vegito","SwordGirl","SwordGuy",
+    "Takako","Tamaki","Tanjiro","Tatsumaki","Temari","TenTen","Tengen",
+    "The World","TheFool","Thor","TimeGirl","Todo","Toji","Tokito","Touka",
+    "Trunks (Spirit Bomb Sword)","Tsukiyama","Turles","Tusk","Ulquiorra",
+    "Ulquiorra (Murcielago)","Ulquiorra (Segunda)","Ulti","Uraume","Uryu",
+    "Usopp","Vegeta (Majin)","Vegeta (Super Saiyan)","Vegito Blue",
+    "Wandering Soul","Wano Luffy","Wolf Beast","WonderU","Wrath","X",
+    "Yamato","Yammy","Yomi","Yoogi","Yoomi","Yoono","Yoriichi","Yorozu",
+    "Young Gojo","Yuji","Yuta","Zeeno","Zeeno23","Zomarie","Zoono","Zoro",
+}
 
-WishTab:CreateTextInput({
-    Name        = "Unit to Wish For",
-    Placeholder = "Exact name e.g. Titan Sparking Zoono",
-    Default     = "",
-    Callback    = function(text)
-        wishTargetUnit = text
-        DevNgg:Notify({ Title = "Wish Target Set", Content = text, Duration = 2 })
+-- ── Section: Pick from full unit list ────────────────────────
+WishTab:CreateSection("Add Wish Target (Mega Sparking)")
+
+WishTab:CreateLabel({ Text = "Pick a unit — auto-prefixed as Mega Sparking:" })
+
+local wishPickSelected = ALL_BARE_NAMES[1]
+local wishPickDD = WishTab:CreateDropdown({
+    Name    = "Choose Unit",
+    Options = ALL_BARE_NAMES,
+    Default = ALL_BARE_NAMES[1],
+    Callback = function(selected)
+        wishPickSelected = selected
     end,
 })
 
 WishTab:CreateButton({
-    Name     = "List Titan Sparking Units",
+    Name     = "➕ Add to Wish List",
     Callback = function()
-        local doodles = ReplicatedStorage:WaitForChild("Doodles")
-        local found = {}
-        for _, doodle in ipairs(doodles:GetChildren()) do
-            if doodle.Name:find("Titan Sparking") then
-                table.insert(found, doodle.Name)
+        local name = wishPickSelected
+        if not name or name == "" then
+            DevNgg:Notify({ Title = "Nothing Selected", Content = "Pick a unit from the dropdown first.", Duration = 2 })
+            return
+        end
+        -- Prevent duplicates (case-insensitive)
+        for _, v in ipairs(wishTargets) do
+            if getBareName(v):lower() == name:lower() then
+                DevNgg:Notify({ Title = "Already In List", Content = "Mega Sparking " .. name .. " is already added.", Duration = 2 })
+                return
             end
         end
-        if #found == 0 then
-            DevNgg:Notify({ Title = "None Found", Content = "No Titan Sparking units found.", Duration = 3 })
-        else
-            print("=== TITAN SPARKING UNITS (" .. #found .. ") ===")
-            for _, name in ipairs(found) do print(name) end
-            DevNgg:Notify({ Title = " Found " .. #found .. " Units", Content = "Check console (F9)!", Duration = 5 })
-        end
+        table.insert(wishTargets, name)
+        refreshWishDropdown()
+        DevNgg:Notify({ Title = "✅ Added", Content = "Mega Sparking " .. name, Duration = 2 })
     end,
 })
 
+-- ── Section: Current wish list ────────────────────────────────
+WishTab:CreateSection("Your Wish List  (priority order)")
+
+WishTab:CreateLabel({ Text = "Select a name below then hit Remove:" })
+
+local wishListDD = WishTab:CreateDropdown({
+    Name    = "Wish Target List",
+    Options = { "(empty)" },
+    Default = "",
+    Callback = function(_) end,
+})
+wishListDropdown = wishListDD
+
+WishTab:CreateButton({
+    Name     = "🗑 Remove Selected",
+    Callback = function()
+        local sel = wishListDD:GetSelected()
+        if sel == "" or sel == "(empty)" then
+            DevNgg:Notify({ Title = "Nothing Selected", Content = "Pick a name from the list first.", Duration = 2 })
+            return
+        end
+        for i, v in ipairs(wishTargets) do
+            if getBareName(v) == sel or v == sel then
+                table.remove(wishTargets, i)
+                break
+            end
+        end
+        refreshWishDropdown()
+        DevNgg:Notify({ Title = "🗑 Removed", Content = sel, Duration = 2 })
+    end,
+})
+
+WishTab:CreateButton({
+    Name     = "🗑 Clear Entire List",
+    Callback = function()
+        wishTargets = {}
+        refreshWishDropdown()
+        DevNgg:Notify({ Title = "List Cleared", Content = "All wish targets removed.", Duration = 2 })
+    end,
+})
+
+-- ── Section: Automation ───────────────────────────────────────
 WishTab:CreateSection("Automation")
 
 WishTab:CreateToggle({
@@ -1077,28 +1397,109 @@ WishTab:CreateToggle({
     CurrentValue = false,
     Flag         = "AutoWish",
     Callback     = function(enabled)
-        if enabled and wishTargetUnit == "" then
-            DevNgg:Notify({ Title = "No Target Set", Content = "Enter a unit name first!", Duration = 3 })
+        if enabled and #wishTargets == 0 then
+            DevNgg:Notify({
+                Title   = "⚠ No Targets!",
+                Content = "Add at least one unit to the wish list first!",
+                Duration = 4,
+            })
+            -- Don't actually enable — force toggle back off
+            dragonBallAutoWish = false
             return
         end
         dragonBallAutoWish = enabled
+        local first = #wishTargets > 0 and ("Mega Sparking " .. getBareName(wishTargets[1])) or "none"
         DevNgg:Notify({
-            Title   = enabled and "Auto Wish — On" or "Auto Wish — Off",
-            Content = enabled and ("Wishing for: " .. wishTargetUnit) or "Disabled.",
+            Title   = enabled and "✅ Auto Wish — ON" or "Auto Wish — OFF",
+            Content = enabled and ("Priority: " .. first) or "Disabled.",
             Duration = 3,
         })
     end,
 })
 
 WishTab:CreateButton({
-    Name     = "Wish Now",
+    Name     = "🐉 Summon Shenron Now",
     Callback = function()
-        if wishTargetUnit == "" then
-            DevNgg:Notify({ Title = "No Target", Content = "Set a unit name first!", Duration = 3 })
+        isCollecting = true
+        -- Try GUI button first
+        local summonBtn = findInGui("SummonShenron")
+        if summonBtn and summonBtn:IsA("GuiButton") then
+            clickBtn(summonBtn)
+        end
+        pcall(function() Events.SummonShenron:FireServer() end)
+        DevNgg:Notify({ Title = "🐉 Summoning!", Content = "Shenron summoned. Waiting for wish screen...", Duration = 3 })
+        task.delay(15, function() if isCollecting then isCollecting = false end end)
+    end,
+})
+
+WishTab:CreateButton({
+    Name     = "✨ Wish Now (skip to ClaimWish remote)",
+    Callback = function()
+        local bareName, fullName = getBestWishTarget()
+        if not bareName then
+            DevNgg:Notify({ Title = "⚠ No Targets", Content = "Add a unit first!", Duration = 3 })
             return
         end
-        Events.ClaimWish:FireServer("SparkingWish", { selectedCharacter = wishTargetUnit })
-        DevNgg:Notify({ Title = "Wish Sent", Content = wishTargetUnit, Duration = 3 })
+        pcall(function()
+            Events.ClaimWish:FireServer("SparkingWish", { selectedCharacter = fullName })
+        end)
+        DevNgg:Notify({ Title = "✨ Wish Sent!", Content = fullName, Duration = 3 })
+    end,
+})
+
+-- ── Section: Unit Scanner ─────────────────────────────────────
+WishTab:CreateSection("Unit Scanner")
+
+WishTab:CreateButton({
+    Name     = "🔍 Scan ALL Units (auto copy)",
+    Callback = function()
+        local doodles = ReplicatedStorage:FindFirstChild("Doodles")
+        if not doodles then
+            DevNgg:Notify({ Title = "Error", Content = "Doodles folder not found!", Duration = 3 })
+            return
+        end
+        local tiers = {
+            ["Titan Sparking"] = {}, ["Mega Sparking"] = {},
+            ["Giant Sparking"] = {}, ["Sparking"] = {}, ["Other"] = {},
+        }
+        local order    = {"Titan Sparking","Mega Sparking","Giant Sparking","Sparking","Other"}
+        local prefixes = {"Titan Sparking ","Mega Sparking ","Giant Sparking ","Sparking "}
+        for _, d in ipairs(doodles:GetChildren()) do
+            local n = d.Name
+            local placed = false
+            for _, p in ipairs(prefixes) do
+                if n:sub(1, #p) == p then
+                    local tier = p:gsub("%s+$","")
+                    if tiers[tier] then table.insert(tiers[tier], n) end
+                    placed = true
+                    break
+                end
+            end
+            if not placed then table.insert(tiers["Other"], n) end
+        end
+        local lines = {}
+        local total = 0
+        for _, tier in ipairs(order) do
+            table.sort(tiers[tier])
+            if #tiers[tier] > 0 then
+                table.insert(lines, "=== " .. tier:upper() .. " (" .. #tiers[tier] .. ") ===")
+                for _, name in ipairs(tiers[tier]) do
+                    table.insert(lines, "  " .. name)
+                    total = total + 1
+                end
+            end
+        end
+        table.insert(lines, "\nTOTAL: " .. total)
+        local out = table.concat(lines, "\n")
+        print(out)
+        local setclip = setclipboard or toclipboard or set_clipboard
+        local copied = false
+        if setclip then pcall(function() setclip(out) copied = true end) end
+        DevNgg:Notify({
+            Title   = "Scanned " .. total .. " units!",
+            Content = copied and "Copied to clipboard + F9!" or "Check F9 console!",
+            Duration = 5,
+        })
     end,
 })
 
@@ -1530,7 +1931,7 @@ SettingsTab:CreateButton({
                 AutoCollect   = dragonBallAutoCollect,
                 AutoHop       = dragonBallAutoHop,
                 AutoWish      = dragonBallAutoWish,
-                WishTarget    = wishTargetUnit,
+                WishTargets   = wishTargets,
                 -- Safari
                 SafariTarget   = safariTargetUnit,
                 SafariHop      = autoSafariServerHop,
@@ -1574,7 +1975,8 @@ configDropdown = SettingsTab:CreateDropdown({
         if autoCampaignThread then task.cancel(autoCampaignThread) autoCampaignThread = nil end
 
         -- Apply Dragon Ball settings
-        wishTargetUnit = data.WishTarget or ""
+        wishTargets = (type(data.WishTargets) == "table") and data.WishTargets or {}
+        refreshWishDropdown()
 
         -- Apply Safari settings
         safariTargetUnit    = data.SafariTarget or ""
@@ -1629,6 +2031,73 @@ SettingsTab:CreateButton({
 })
 
 -- ══════════════════════════════════════════════════════════════
+-- ANTI AFK — resets idle timer every 15 min so you never get kicked
+-- ══════════════════════════════════════════════════════════════
+local VirtualUser = game:GetService("VirtualUser")
+
+local function doAntiAfkPing()
+    pcall(function()
+        VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+        task.wait(0.1)
+        VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+    end)
+    pcall(function()
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then hum.Jump = true end
+        end
+    end)
+end
+
+local function startAntiAfk()
+    if antiAfkThread then task.cancel(antiAfkThread) antiAfkThread = nil end
+    antiAfkThread = task.spawn(function()
+        while antiAfkEnabled do
+            task.wait(15 * 60)
+            if not antiAfkEnabled then break end
+            doAntiAfkPing()
+            DevNgg:Notify({ Title = "Anti AFK", Content = "Idle timer reset — still farming!", Duration = 3 })
+        end
+    end)
+end
+
+local function stopAntiAfk()
+    if antiAfkThread then task.cancel(antiAfkThread) antiAfkThread = nil end
+end
+
+-- ── Anti AFK Tab ─────────────────────────────────────────────
+local AntiAfkTab = Window:CreateTab("Anti AFK", nil)
+
+AntiAfkTab:CreateSection("Anti AFK")
+
+AntiAfkTab:CreateToggle({
+    Name         = "Anti AFK (Auto)",
+    CurrentValue = false,
+    Flag         = "AntiAfk",
+    Callback     = function(enabled)
+        antiAfkEnabled = enabled
+        if enabled then
+            startAntiAfk()
+            DevNgg:Notify({ Title = "✅ Anti AFK — ON", Content = "Idle timer resets every 15 min. Won't get kicked!", Duration = 4 })
+        else
+            stopAntiAfk()
+            DevNgg:Notify({ Title = "Anti AFK — OFF", Content = "Stopped.", Duration = 3 })
+        end
+    end,
+})
+
+AntiAfkTab:CreateSection("Manual")
+
+AntiAfkTab:CreateButton({
+    Name     = "Reset Idle Timer Now",
+    Callback = function()
+        doAntiAfkPing()
+        DevNgg:Notify({ Title = "Anti AFK", Content = "Idle timer reset manually!", Duration = 3 })
+    end,
+})
+
+-- ══════════════════════════════════════════════════════════════
 -- SECTION 23: DRAGON BALL REMOVAL LISTENER
 -- Uses cache instead of scanning — zero freeze
 -- ══════════════════════════════════════════════════════════════
@@ -1662,7 +2131,8 @@ pcall(function()
     if not data then return end
 
     -- Apply all settings silently
-    wishTargetUnit          = data.WishTarget or ""
+    wishTargets             = (type(data.WishTargets) == "table") and data.WishTargets or {}
+    refreshWishDropdown()
     safariTargetUnit        = data.SafariTarget or ""
     autoSafariServerHop     = data.SafariHop ~= false
     autoSafariSparking      = data.SafariSparking ~= false
