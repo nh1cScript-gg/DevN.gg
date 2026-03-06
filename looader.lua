@@ -1,171 +1,61 @@
 loadstring('function LPH_NO_VIRTUALIZE(f) return f end;')()
 
--- Services
 local cloneref = cloneref or function(s) return s end
 local TweenService = cloneref(game:GetService('TweenService'))
-local UserInput    = cloneref(game:GetService('UserInputService'))
-local Players      = cloneref(game:GetService('Players'))
-local CoreGui      = cloneref(game:GetService('CoreGui'))
-
--- Utilities
+local UserInput = cloneref(game:GetService('UserInputService'))
+local CoreGui = cloneref(game:GetService('CoreGui'))
 local setclip = setclipboard or toclipboard or set_clipboard or (Clipboard and Clipboard.set)
 local getgenv = getgenv or function() return shared end
 
--- Config (EDIT THESE)
-local DISCORD   = 'discord.gg/NUvUBqpY'
-local KEY_URL   = 'https://ads.luarmor.net/get_key?for=DevNGG_Linkvertise-spFShuBrrikz'
-local LOGO_URL  = 'https://your-logo-url.com/logo.png'
-local LOGO_FILE = 'DevNGG.png'
-local KEY_FILE  = 'DevNGG_Key.txt'
-local HUB_NAME  = 'DevN.GG'
+local DISCORD = 'discord.gg/NUvUBqpY'
+local KEY_URL = 'https://ads.luarmor.net/get_key?for=DevNGG_Linkvertise-spFShuBrrikz'
+local KEY_FILE = 'DevNGG_Key.txt'
+local HUB_NAME = 'DevN.GG'
+local scriptId = 'b21e1a3cb48e19e563afc194037d1234'
 
--- Luarmor setup
-local luarmor = loadstring(game:HttpGet('https://sdkapi-public.luarmor.net/library.lua'))()
-
--- Game ID -> Script ID map (add your games here)
-local scriptIds = {
-    -- [GameId] = '',
-}
-
-local PROJECT_ID = '4d4ed9c55a9a9940554f89cadf145d52'
-local scriptId   = 'b21e1a3cb48e19e563afc194037d1234'
-
--- Key save/load helpers
+-- DO NOT load luarmor here yet, load it only when key is submitted
+local function saveKey(k) if writefile then pcall(function() writefile(KEY_FILE, k) end) end end
 local function getSavedKey()
     if not isfile then return nil end
-    local ok, result = pcall(function()
-        if isfile(KEY_FILE) then return readfile(KEY_FILE) end
-        return nil
-    end)
-    if ok and result and #result > 5 then return result end
+    local ok, r = pcall(function() if isfile(KEY_FILE) then return readfile(KEY_FILE) end end)
+    if ok and r and #r > 5 then return r end
     return nil
 end
+local function delKey() if delfile then pcall(function() if isfile and isfile(KEY_FILE) then delfile(KEY_FILE) end end) end end
 
-local function saveKey(key)
-    if not writefile then return end
-    pcall(function() writefile(KEY_FILE, key) end)
+local function randomName(n)
+    local c='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+    local r='' for i=1,n or 12 do r=r..c:sub(math.random(1,#c),math.random(1,#c)) end return r
 end
 
-local function deleteSavedKey()
-    if not delfile then return end
-    pcall(function()
-        if isfile and isfile(KEY_FILE) then delfile(KEY_FILE) end
-    end)
-end
+-- BUILD GUI FIRST before any luarmor calls
+local sg = Instance.new('ScreenGui')
+sg.Name = randomName(16)
+if protect_gui then protect_gui(sg) end
+sg.Parent = CoreGui
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.ResetOnSpawn = false
 
--- Auto authenticate on launch
-local function tryAutoAuth()
-    local envKey   = script_key or _G.script_key or _G['%USER_KEY%'] or getgenv().script_key or _G.LuarmorKey or _G.luarmor_key
-    local savedKey = getSavedKey()
-
-    if type(envKey) ~= 'string' then envKey = nil end
-    if type(savedKey) ~= 'string' then savedKey = nil end
-    if envKey and (envKey:find('%%') or #envKey < 10) then envKey = nil end
-
-    local key = envKey or savedKey
-    if not key or #key < 10 then return false end
-
-    luarmor.script_id = scriptId
-    local ok, result = pcall(function() return luarmor.check_key(key) end)
-    if not ok or not result then return false end
-
-    if result.code == 'KEY_VALID' then
-        getgenv().script_key = key
-        saveKey(key)
-        luarmor.load_script()
-        return true
-    else
-        deleteSavedKey()
-        return false
-    end
-end
-
-if tryAutoAuth() then return end
-
--- Random name generator (anti-detection)
-local function randomName(length)
-    local chars  = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-    local result = ''
-    for i = 1, length or 12 do
-        local index = math.random(1, #chars)
-        result = result .. chars:sub(index, index)
-    end
-    return result
-end
-
--- Load logo
-local logoAsset
-if writefile and isfile and getcustomasset then
-    pcall(function()
-        if not isfile(LOGO_FILE) then
-            writefile(LOGO_FILE, game:HttpGet(LOGO_URL))
-        end
-        logoAsset = getcustomasset(LOGO_FILE)
-    end)
-end
-
--- GUI setup
-local screenGui = Instance.new('ScreenGui')
-screenGui.Name = randomName(16)
-if protect_gui then protect_gui(screenGui) end
-screenGui.Parent = CoreGui
-screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-screenGui.ResetOnSpawn = false
-
--- Main frame
 local frame = Instance.new('Frame')
 frame.Name = randomName(12)
-frame.Parent = screenGui
+frame.Parent = sg
 frame.AnchorPoint = Vector2.new(0.5, 0.5)
 frame.BackgroundColor3 = Color3.fromRGB(16, 16, 22)
-frame.BackgroundTransparency = 0.15
+frame.BackgroundTransparency = 0.05
 frame.Position = UDim2.new(0.5, 0, 0.5, 0)
 frame.Size = UDim2.new(0, 400, 0, 240)
 Instance.new('UICorner', frame).CornerRadius = UDim.new(0, 12)
 
-local frameStroke = Instance.new('UIStroke')
-frameStroke.Color = Color3.fromRGB(70, 50, 120)
-frameStroke.Thickness = 1.5
-frameStroke.Transparency = 0.5
-frameStroke.Parent = frame
+local fs = Instance.new('UIStroke')
+fs.Color = Color3.fromRGB(139, 92, 246)
+fs.Thickness = 1.5
+fs.Transparency = 0.4
+fs.Parent = frame
 
--- Shadow layers
-local shadowContainer = Instance.new('Frame')
-shadowContainer.Name = randomName(8)
-shadowContainer.Parent = frame
-shadowContainer.BackgroundTransparency = 1
-shadowContainer.Size = UDim2.new(1, 0, 1, 0)
-shadowContainer.ZIndex = 0
-
-for i = 1, 3 do
-    local shadow = Instance.new('Frame')
-    shadow.Name = randomName(6)
-    shadow.Parent = shadowContainer
-    shadow.AnchorPoint = Vector2.new(0.5, 0.5)
-    shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    shadow.BackgroundTransparency = 0.88 + (i * 0.03)
-    shadow.Position = UDim2.new(0.5, 0, 0.5, i * 2)
-    shadow.Size = UDim2.new(1, i * 4, 1, i * 4)
-    shadow.ZIndex = 0
-    Instance.new('UICorner', shadow).CornerRadius = UDim.new(0, 12 + i)
-end
-
--- Logo
-local logo = Instance.new('ImageLabel')
-logo.Name = randomName(8)
-logo.Parent = frame
-logo.BackgroundTransparency = 1
-logo.Position = UDim2.new(0, 18, 0, 11)
-logo.Size = UDim2.new(0, 32, 0, 32)
-logo.Image = logoAsset or ''
-logo.ScaleType = Enum.ScaleType.Fit
-
--- Title
 local title = Instance.new('TextLabel')
-title.Name = randomName(8)
 title.Parent = frame
 title.BackgroundTransparency = 1
-title.Position = UDim2.new(0, 56, 0, 14)
+title.Position = UDim2.new(0, 18, 0, 14)
 title.Size = UDim2.new(0, 200, 0, 26)
 title.Font = Enum.Font.GothamBlack
 title.Text = HUB_NAME
@@ -173,9 +63,7 @@ title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.TextSize = 20
 title.TextXAlignment = Enum.TextXAlignment.Left
 
--- Close button
 local closeBtn = Instance.new('TextButton')
-closeBtn.Name = randomName(8)
 closeBtn.Parent = frame
 closeBtn.BackgroundTransparency = 1
 closeBtn.Position = UDim2.new(1, -32, 0, 10)
@@ -186,38 +74,36 @@ closeBtn.TextColor3 = Color3.fromRGB(120, 120, 140)
 closeBtn.TextSize = 14
 closeBtn.AutoButtonColor = false
 
--- Subtitle
+local div = Instance.new('Frame')
+div.Parent = frame
+div.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+div.BorderSizePixel = 0
+div.Position = UDim2.new(0, 0, 0, 46)
+div.Size = UDim2.new(1, 0, 0, 1)
+
 local subtitle = Instance.new('TextLabel')
-subtitle.Name = randomName(8)
 subtitle.Parent = frame
 subtitle.BackgroundTransparency = 1
-subtitle.Position = UDim2.new(0, 20, 0, 48)
-subtitle.Size = UDim2.new(1, -40, 0, 26)
+subtitle.Position = UDim2.new(0, 20, 0, 54)
+subtitle.Size = UDim2.new(1, -40, 0, 28)
 subtitle.Font = Enum.Font.Gotham
-subtitle.Text = 'Having trouble getting a key or checking your key?\nJoin our Discord server for assistance!'
+subtitle.Text = 'Enter your key below. Need one? Click Get Key!'
 subtitle.TextColor3 = Color3.fromRGB(120, 120, 140)
 subtitle.TextSize = 11
 subtitle.TextWrapped = true
 subtitle.TextXAlignment = Enum.TextXAlignment.Left
-subtitle.TextYAlignment = Enum.TextYAlignment.Top
-subtitle.LineHeight = 1.2
 
--- Key input container
 local inputFrame = Instance.new('Frame')
-inputFrame.Name = randomName(8)
 inputFrame.Parent = frame
 inputFrame.BackgroundColor3 = Color3.fromRGB(26, 26, 34)
-inputFrame.Position = UDim2.new(0, 20, 0, 76)
+inputFrame.Position = UDim2.new(0, 20, 0, 88)
 inputFrame.Size = UDim2.new(1, -40, 0, 38)
 Instance.new('UICorner', inputFrame).CornerRadius = UDim.new(0, 8)
-
 local inputStroke = Instance.new('UIStroke')
 inputStroke.Color = Color3.fromRGB(50, 50, 65)
 inputStroke.Parent = inputFrame
 
--- Key input box
 local keyInput = Instance.new('TextBox')
-keyInput.Name = randomName(8)
 keyInput.Parent = inputFrame
 keyInput.BackgroundTransparency = 1
 keyInput.Position = UDim2.new(0, 12, 0, 0)
@@ -225,215 +111,130 @@ keyInput.Size = UDim2.new(1, -24, 1, 0)
 keyInput.Font = Enum.Font.Gotham
 keyInput.PlaceholderColor3 = Color3.fromRGB(85, 85, 105)
 keyInput.PlaceholderText = 'Enter your key here...'
-keyInput.Text = ''
+keyInput.Text = getSavedKey() or ''
 keyInput.TextColor3 = Color3.fromRGB(255, 255, 255)
 keyInput.TextSize = 13
 keyInput.TextXAlignment = Enum.TextXAlignment.Left
+keyInput.ClearTextOnFocus = false
 
--- Check Key button
-local checkBtn = Instance.new('TextButton')
-checkBtn.Name = randomName(8)
-checkBtn.Parent = frame
-checkBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 140)
-checkBtn.BackgroundTransparency = 0.4
-checkBtn.Position = UDim2.new(0, 20, 0, 122)
-checkBtn.Size = UDim2.new(1, -40, 0, 36)
-checkBtn.Font = Enum.Font.GothamBold
-checkBtn.Text = 'Check Key'
-checkBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-checkBtn.TextSize = 13
-checkBtn.AutoButtonColor = false
-Instance.new('UICorner', checkBtn).CornerRadius = UDim.new(0, 8)
-
-local checkStroke = Instance.new('UIStroke')
-checkStroke.Color = Color3.fromRGB(140, 100, 220)
-checkStroke.Transparency = 0.3
-checkStroke.Parent = checkBtn
-
--- Status label
 local statusLabel = Instance.new('TextLabel')
-statusLabel.Name = randomName(8)
 statusLabel.Parent = frame
 statusLabel.BackgroundTransparency = 1
-statusLabel.Position = UDim2.new(0, 0, 0, 160)
-statusLabel.Size = UDim2.new(1, 0, 0, 14)
+statusLabel.Position = UDim2.new(0, 0, 0, 130)
+statusLabel.Size = UDim2.new(1, 0, 0, 16)
 statusLabel.Font = Enum.Font.GothamMedium
 statusLabel.Text = ''
 statusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
-statusLabel.TextSize = 10
+statusLabel.TextSize = 11
 
--- Support button
-local supportBtn = Instance.new('TextButton')
-supportBtn.Name = randomName(8)
-supportBtn.Parent = frame
-supportBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 140)
-supportBtn.BackgroundTransparency = 0.4
-supportBtn.Position = UDim2.new(0, 20, 0, 178)
-supportBtn.Size = UDim2.new(0.5, -24, 0, 36)
-supportBtn.Font = Enum.Font.GothamBold
-supportBtn.Text = 'Support'
-supportBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-supportBtn.TextSize = 12
-supportBtn.AutoButtonColor = false
-Instance.new('UICorner', supportBtn).CornerRadius = UDim.new(0, 8)
-
-local supportStroke = Instance.new('UIStroke')
-supportStroke.Color = Color3.fromRGB(140, 100, 220)
-supportStroke.Transparency = 0.3
-supportStroke.Parent = supportBtn
-
--- Get Key button
-local getKeyBtn = Instance.new('TextButton')
-getKeyBtn.Name = randomName(8)
-getKeyBtn.Parent = frame
-getKeyBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 140)
-getKeyBtn.BackgroundTransparency = 0.4
-getKeyBtn.Position = UDim2.new(0.5, 4, 0, 178)
-getKeyBtn.Size = UDim2.new(0.5, -24, 0, 36)
-getKeyBtn.Font = Enum.Font.GothamBold
-getKeyBtn.Text = 'Get Key'
-getKeyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-getKeyBtn.TextSize = 12
-getKeyBtn.AutoButtonColor = false
-Instance.new('UICorner', getKeyBtn).CornerRadius = UDim.new(0, 8)
-
-local getKeyStroke = Instance.new('UIStroke')
-getKeyStroke.Color = Color3.fromRGB(140, 100, 220)
-getKeyStroke.Transparency = 0.3
-getKeyStroke.Parent = getKeyBtn
-
--- Drag logic
-local dragging, lastInput, dragStart, startPos
-
-frame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging  = true
-        dragStart = input.Position
-        startPos  = frame.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
-    end
-end)
-
-frame.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        lastInput = input
-    end
-end)
-
-UserInput.InputChanged:Connect(function(input)
-    if input == lastInput and dragging then
-        local delta = input.Position - dragStart
-        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    end
-end)
-
--- Tween helper
-local function tween(obj, props, duration)
-    TweenService:Create(obj, TweenInfo.new(duration or 0.15, Enum.EasingStyle.Quad), props):Play()
+local function makeBtn(txt, pos, sz, col)
+    local b = Instance.new('TextButton')
+    b.Parent = frame
+    b.BackgroundColor3 = col
+    b.BackgroundTransparency = 0.4
+    b.Position = pos
+    b.Size = sz
+    b.Font = Enum.Font.GothamBold
+    b.Text = txt
+    b.TextColor3 = Color3.fromRGB(255,255,255)
+    b.TextSize = 12
+    b.AutoButtonColor = false
+    Instance.new('UICorner', b).CornerRadius = UDim.new(0, 8)
+    local s = Instance.new('UIStroke')
+    s.Color = col s.Transparency = 0.3 s.Parent = b
+    b.MouseEnter:Connect(function() TweenService:Create(b,TweenInfo.new(.15),{BackgroundTransparency=0.15}):Play() end)
+    b.MouseLeave:Connect(function() TweenService:Create(b,TweenInfo.new(.15),{BackgroundTransparency=0.4}):Play() end)
+    return b
 end
 
--- Hover effects
-closeBtn.MouseEnter:Connect(function()   tween(closeBtn,   {TextColor3 = Color3.fromRGB(255, 70, 70)}) end)
-closeBtn.MouseLeave:Connect(function()   tween(closeBtn,   {TextColor3 = Color3.fromRGB(120, 120, 140)}) end)
+local checkBtn  = makeBtn('✔ Check Key', UDim2.new(0,20,0,152),  UDim2.new(0.45,-24,0,36), Color3.fromRGB(139,92,246))
+local discordBtn= makeBtn('💬 Discord',  UDim2.new(0.45,4,0,152), UDim2.new(0.27,-4,0,36),  Color3.fromRGB(88,101,242))
+local getKeyBtn = makeBtn('🔗 Get Key',  UDim2.new(0.72,8,0,152), UDim2.new(0.28,-28,0,36), Color3.fromRGB(255,140,0))
 
-checkBtn.MouseEnter:Connect(function()   tween(checkBtn,   {BackgroundTransparency = 0.2}) tween(checkStroke,   {Transparency = 0}) end)
-checkBtn.MouseLeave:Connect(function()   tween(checkBtn,   {BackgroundTransparency = 0.4}) tween(checkStroke,   {Transparency = 0.3}) end)
-
-supportBtn.MouseEnter:Connect(function() tween(supportBtn, {BackgroundTransparency = 0.2}) tween(supportStroke, {Transparency = 0}) end)
-supportBtn.MouseLeave:Connect(function() tween(supportBtn, {BackgroundTransparency = 0.4}) tween(supportStroke, {Transparency = 0.3}) end)
-
-getKeyBtn.MouseEnter:Connect(function()  tween(getKeyBtn,  {BackgroundTransparency = 0.2}) tween(getKeyStroke,  {Transparency = 0}) end)
-getKeyBtn.MouseLeave:Connect(function()  tween(getKeyBtn,  {BackgroundTransparency = 0.4}) tween(getKeyStroke,  {Transparency = 0.3}) end)
-
-keyInput.Focused:Connect(function()
-    tween(inputStroke, {Color = Color3.fromRGB(139, 92, 246)})
-    tween(inputFrame,  {BackgroundColor3 = Color3.fromRGB(32, 32, 42)})
+-- Drag
+local drag,ds,sp,li
+frame.InputBegan:Connect(function(i)
+    if i.UserInputType==Enum.UserInputType.MouseButton1 then
+        drag=true ds=i.Position sp=frame.Position
+        i.Changed:Connect(function() if i.UserInputState==Enum.UserInputState.End then drag=false end end)
+    end
 end)
-keyInput.FocusLost:Connect(function()
-    tween(inputStroke, {Color = Color3.fromRGB(50, 50, 65)})
-    tween(inputFrame,  {BackgroundColor3 = Color3.fromRGB(26, 26, 34)})
+frame.InputChanged:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseMovement then li=i end end)
+UserInput.InputChanged:Connect(function(i)
+    if i==li and drag then local d=i.Position-ds frame.Position=UDim2.new(sp.X.Scale,sp.X.Offset+d.X,sp.Y.Scale,sp.Y.Offset+d.Y) end
 end)
 
--- Close
-closeBtn.MouseButton1Click:Connect(function()
-    tween(frame, {Size = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 1}, 0.2)
-    task.wait(0.2)
-    screenGui:Destroy()
+keyInput.Focused:Connect(function() TweenService:Create(inputStroke,TweenInfo.new(.15),{Color=Color3.fromRGB(139,92,246)}):Play() end)
+keyInput.FocusLost:Connect(function() TweenService:Create(inputStroke,TweenInfo.new(.15),{Color=Color3.fromRGB(50,50,65)}):Play() end)
+
+local function setStatus(msg, col)
+    statusLabel.TextColor3 = col or Color3.fromRGB(255,100,100)
+    statusLabel.Text = msg
+    task.delay(3, function() if statusLabel.Text == msg then statusLabel.Text = '' end end)
+end
+
+local function closeGUI(cb)
+    TweenService:Create(frame,TweenInfo.new(.2),{Size=UDim2.new(0,0,0,0),BackgroundTransparency=1}):Play()
+    task.wait(.22) sg:Destroy() if cb then cb() end
+end
+
+closeBtn.MouseEnter:Connect(function() TweenService:Create(closeBtn,TweenInfo.new(.15),{TextColor3=Color3.fromRGB(255,70,70)}):Play() end)
+closeBtn.MouseLeave:Connect(function() TweenService:Create(closeBtn,TweenInfo.new(.15),{TextColor3=Color3.fromRGB(120,120,140)}):Play() end)
+closeBtn.MouseButton1Click:Connect(function() closeGUI() end)
+
+discordBtn.MouseButton1Click:Connect(function()
+    if setclip then setclip('https://'..DISCORD) end
+    setStatus('Discord copied!', Color3.fromRGB(87,242,135))
 end)
 
--- Support button
-supportBtn.MouseButton1Click:Connect(function()
-    if setclip then setclip('https://' .. DISCORD) end
-    statusLabel.TextColor3 = Color3.fromRGB(87, 242, 135)
-    statusLabel.Text = 'Discord link copied!'
-    task.delay(2, function() statusLabel.Text = '' end)
-end)
-
--- Get Key button
 getKeyBtn.MouseButton1Click:Connect(function()
     if setclip then setclip(KEY_URL) end
-    statusLabel.TextColor3 = Color3.fromRGB(87, 242, 135)
-    statusLabel.Text = 'Key link copied!'
-    task.delay(2, function() statusLabel.Text = '' end)
+    setStatus('Key link copied!', Color3.fromRGB(87,242,135))
 end)
 
--- Check Key button
+local ERRS = {
+    KEY_EXPIRED='Key expired! Get a new one.',
+    KEY_BANNED='Key is banned.',
+    KEY_HWID_LOCKED='HWID mismatch! Get a new key.',
+    KEY_INCORRECT='Key not found! Check it or get a new one.',
+    KEY_INVALID='Invalid key format.',
+    SCRIPT_ID_INCORRECT='Config error - contact support.',
+    INVALID_EXECUTOR='Executor not supported.',
+    SECURITY_ERROR='Security error. Try again.',
+    TIME_ERROR='Sync your system clock.',
+    UNKNOWN_ERROR='Server error. Try again later.',
+}
+
 checkBtn.MouseButton1Click:Connect(function()
-    local key = keyInput.Text
+    local k = keyInput.Text
+    if k=='' or #k<10 then setStatus('Please enter a valid key!') return end
+    setStatus('Validating...', Color3.fromRGB(130,130,150))
 
-    if key == '' or #key < 10 then
-        statusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
-        statusLabel.Text = 'Please enter a valid key!'
-        return
-    end
+    task.spawn(function()
+        -- Load luarmor ONLY when user clicks Check Key
+        local ok0, lm = pcall(function()
+            return loadstring(game:HttpGet('https://sdkapi-public.luarmor.net/library.lua'))()
+        end)
+        if not ok0 then setStatus('Failed to reach server. Try again.') return end
+        lm.script_id = scriptId
 
-    statusLabel.TextColor3 = Color3.fromRGB(130, 130, 150)
-    statusLabel.Text = 'Validating...'
-    luarmor.script_id = scriptId
+        local ok, r = pcall(function() return lm.check_key(k) end)
+        if not ok then setStatus('Error checking key. Try again.') return end
 
-    local ok, result = pcall(function() return luarmor.check_key(key) end)
-
-    if not ok then
-        statusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
-        statusLabel.Text = 'Error checking key. Try again.'
-        return
-    end
-
-    local errors = {
-        KEY_EXPIRED         = 'Your key has expired! Please get a new key.',
-        KEY_BANNED          = 'This key has been banned and cannot be used anymore.',
-        KEY_HWID_LOCKED     = 'Key is locked to another device! Reset your HWID or get a new key.',
-        KEY_INCORRECT       = 'This key does not exist! Double-check your key or get a new one.',
-        KEY_INVALID         = 'Invalid key format! Key is empty, too short, or too long.',
-        SCRIPT_ID_INCORRECT = 'Script configuration error - please contact support on Discord!',
-        SCRIPT_ID_INVALID   = 'Script configuration error - please contact support on Discord!',
-        INVALID_EXECUTOR    = 'Your executor is not supported! Try using a different executor.',
-        SECURITY_ERROR      = 'Security validation failed! Request was blocked by Cloudflare.',
-        TIME_ERROR          = 'Your system time is incorrect! Sync your clock and try again.',
-        UNKNOWN_ERROR       = 'Server error! Try again later or contact support on Discord.',
-    }
-
-    if result.code == 'KEY_VALID' then
-        statusLabel.TextColor3 = Color3.fromRGB(87, 242, 135)
-        statusLabel.Text = 'Key valid! Loading script...'
-        getgenv().script_key = key
-        saveKey(key)
-        task.wait(1)
-        tween(frame, {Size = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 1}, 0.2)
-        task.wait(0.2)
-        screenGui:Destroy()
-        luarmor.load_script()
-    else
-        statusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
-        statusLabel.Text = errors[result.code] or ('Unknown error: ' .. (result.message or result.code or 'Unknown') .. ' - contact support!')
-    end
+        if r.code == 'KEY_VALID' then
+            setStatus('Key valid! Loading '..HUB_NAME..'...', Color3.fromRGB(87,242,135))
+            getgenv().script_key = k
+            saveKey(k)
+            task.wait(1.2)
+            closeGUI(function() lm.load_script() end)
+        else
+            delKey()
+            setStatus(ERRS[r.code] or 'Error: '..(r.code or 'Unknown'))
+        end
+    end)
 end)
 
 -- Open animation
-frame.Size = UDim2.new(0, 0, 0, 0)
+frame.Size = UDim2.new(0,0,0,0)
 frame.BackgroundTransparency = 1
-tween(frame, {Size = UDim2.new(0, 400, 0, 240), BackgroundTransparency = 0.05}, 0.3)
+TweenService:Create(frame,TweenInfo.new(.3,Enum.EasingStyle.Back),{Size=UDim2.new(0,400,0,240),BackgroundTransparency=0.05}):Play()
