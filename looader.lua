@@ -1,3 +1,4 @@
+loadstring('    function LPH_NO_VIRTUALIZE(f) return f end;\n')()
 local cloneref = cloneref or function(s) return s end
 local TweenService = cloneref(game:GetService('TweenService'))
 local UserInput = cloneref(game:GetService('UserInputService'))
@@ -27,8 +28,41 @@ local function rn(n)
     local r='' for i=1,n or 12 do r=r..c:sub(math.random(1,#c),math.random(1,#c)) end return r
 end
 
--- ── AUTO-LOAD: skip GUI if a valid saved key exists ───────────
-local function buildAndShowGUI() -- wrapped so we can call it after failed auto-check
+-- ── AUTO-LOAD: same pattern as LuminHub ──────────────────────
+local function tryAutoAuth()
+    -- grab key from any possible source
+    local envKey = script_key or _G.script_key or (getgenv and getgenv().script_key) or nil
+    local savedKey = getSavedKey()
+    if type(envKey) ~= 'string' then envKey = nil end
+    if type(savedKey) ~= 'string' then savedKey = nil end
+    -- ignore obviously bad keys
+    if envKey and #envKey < 10 then envKey = nil end
+    local key = envKey or savedKey
+    if not key or #key < 10 then return false end
+    -- validate silently
+    local lmOk, lm = pcall(function()
+        return loadstring(game:HttpGet('https://sdkapi-public.luarmor.net/library.lua'))()
+    end)
+    if not lmOk or not lm then return false end
+    lm.script_id = SCRIPT_ID
+    local ok, r = pcall(function() return lm.check_key(key) end)
+    if not ok or not r then return false end
+    if r.code == 'KEY_VALID' then
+        getgenv().script_key = key
+        _G.script_key = key
+        saveKey(key)
+        loadstring(game:HttpGet(SCRIPT_URL))()
+        return true
+    else
+        delKey()
+        return false
+    end
+end
+
+-- If key is valid → skip GUI entirely and load straight away
+if tryAutoAuth() then return end
+
+local function buildAndShowGUI()
 
 -- BUILD GUI
 local sg=Instance.new('ScreenGui') sg.Name=rn(16)
@@ -173,32 +207,5 @@ TweenService:Create(fr,TweenInfo.new(.3,Enum.EasingStyle.Back),{Position=UDim2.f
 
 end -- end of buildAndShowGUI()
 
--- ── ENTRY POINT ───────────────────────────────────────────────
-local savedKey = getSavedKey()
-if savedKey then
-    -- Try to silently validate the saved key — no GUI shown
-    task.spawn(function()
-        local ok0, lm = pcall(function()
-            return loadstring(game:HttpGet('https://sdkapi-public.luarmor.net/library.lua'))()
-        end)
-        if ok0 and lm then
-            lm.script_id = SCRIPT_ID
-            local ok, r = pcall(function() return lm.check_key(savedKey) end)
-            if ok and r and r.code == 'KEY_VALID' then
-                -- Key still valid — load the script silently, no GUI needed
-                getgenv().script_key = savedKey
-                _G.script_key = savedKey
-                loadstring(game:HttpGet(SCRIPT_URL))()
-                return
-            else
-                -- Key expired or invalid — wipe it and show GUI
-                delKey()
-            end
-        end
-        -- Validation failed — fall back to showing the key GUI
-        buildAndShowGUI()
-    end)
-else
-    -- No saved key at all — show GUI immediately
-    buildAndShowGUI()
-end
+-- No valid saved key — show the GUI
+buildAndShowGUI()
