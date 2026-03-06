@@ -1,4 +1,33 @@
 loadstring('    function LPH_NO_VIRTUALIZE(f) return f end;\n')()
+
+-- ── AUTO RE-EXECUTE ON SERVER HOP ────────────────────────────
+-- Re-runs this loader every time the player teleports to a new server
+local _Players = game:GetService("Players")
+local _LocalPlayer = _Players.LocalPlayer
+local _loaderUrl = 'https://raw.githubusercontent.com/nh1cScript-gg/DevN.gg/main/loader.lua'
+
+local function reloadOnHop()
+    task.wait(3) -- wait for new server to fully load
+    pcall(function()
+        loadstring(game:HttpGet(_loaderUrl))()
+    end)
+end
+
+-- Fires when server hop / teleport happens
+_LocalPlayer.OnTeleport:Connect(reloadOnHop)
+
+-- Fires when character loads in a new server
+_LocalPlayer.CharacterAdded:Connect(function()
+    -- Only re-run if already in a game (not first load)
+    if game:GetService("RunService"):IsRunning() then
+        task.wait(3)
+        pcall(function()
+            loadstring(game:HttpGet(_loaderUrl))()
+        end)
+    end
+end)
+-- ─────────────────────────────────────────────────────────────
+
 local cloneref = cloneref or function(s) return s end
 local TweenService = cloneref(game:GetService('TweenService'))
 local UserInput = cloneref(game:GetService('UserInputService'))
