@@ -391,84 +391,50 @@ local function teleportToPosition(position)
 end
 
 -- ══════════════════════════════════════════════════════════════
--- SECTION 9: DRAGON BALL HELPERS (Zero-Freeze Event Cache)
--- Balls are Parts named DragonBall1-7 cloned from
--- ReplicatedStorage.Assets.ShenronSpawner into workspace.
--- We use a live cache instead of scanning to avoid freezes.
+-- SECTION 9: DRAGON BALL HELPERS
+-- HOW IT WORKS (confirmed from source + explorer):
+--   - Balls respawn every hour and stay in workspace permanently
+--   - Collection is proximity-based on the server
+--   - Server fires UpdateDragonBallBackpack(count) when we collect one
+--   - We ONLY trust that event — never dragonBallsExist() for hop decisions
+--   - Other players' balls never fire our event so they're fully ignored
 -- ══════════════════════════════════════════════════════════════
 
--- Live cache: ball object → true
-local dragonBallCache = {}
+local lastKnownCount = 0
+local lastCountTime  = 0
 
-local function isDragonBall(obj)
-    if not obj:IsA("Part") then return false end
-    if not obj.Name:match("^DragonBall%d$") then return false end
-    if not obj:FindFirstChild("Attachment") then return false end
-    if obj:IsDescendantOf(ReplicatedStorage) then return false end
-    -- Ignore balls inside ShenronSpawner (circling/summoning animation)
-    local p = obj.Parent
-    while p and p ~= workspace do
-        if p.Name == "ShenronSpawner" then return false end
-        p = p.Parent
-    end
-    -- Ignore fading/claimed balls (Transparency >= 0.9)
-    if obj.Transparency >= 0.9 then return false end
-    return true
-end
-
--- Passively watch workspace — instant, no scanning
-workspace.DescendantAdded:Connect(function(obj)
-    if isDragonBall(obj) then
-        dragonBallCache[obj] = true
-    end
-end)
-
-workspace.DescendantRemoving:Connect(function(obj)
-    dragonBallCache[obj] = nil
-end)
-
--- One-time background scan on startup with yields to prevent freeze
-task.spawn(function()
-    task.wait(2) -- wait for map to fully load
-    for i, obj in ipairs(workspace:GetDescendants()) do
-        if i % 200 == 0 then task.wait() end
-        if isDragonBall(obj) then
-            dragonBallCache[obj] = true
-        end
-    end
-end)
-
+-- Simple scan — no cache needed, balls are always in workspace
 local function getAllDragonBalls()
     local balls = {}
-    for ball in pairs(dragonBallCache) do
-        if ball and ball.Parent then
-            table.insert(balls, ball)
-        else
-            dragonBallCache[ball] = nil -- clean stale refs
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart")
+            and obj.Name:match("^DragonBall%d$")
+            and obj.Transparency < 0.9 then
+            table.insert(balls, obj)
         end
     end
     return balls
 end
 
 local function dragonBallsExist()
-    for ball in pairs(dragonBallCache) do
-        if ball and ball.Parent then return true end
-        dragonBallCache[ball] = nil
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart")
+            and obj.Name:match("^DragonBall%d$")
+            and obj.Transparency < 0.9 then
+            return true
+        end
     end
     return false
 end
 
+-- Teleport on top — server registers proximity and increments our count
+-- Balls never disappear, so we just teleport and move on
 local function collectDragonBall(ball)
+    if not ball or not ball.Parent then return end
     local hrp = getHumanoidRootPart()
-    if not hrp or not ball or not ball.Parent then return end
+    if not hrp then return end
     hrp.CFrame = CFrame.new(ball.Position + Vector3.new(0, 3, 0))
-    task.wait(0.1)
-    local prompt = ball:FindFirstChildOfClass("ProximityPrompt")
-    if not prompt then
-        local attach = ball:FindFirstChild("Attachment")
-        if attach then prompt = attach:FindFirstChildOfClass("ProximityPrompt") end
-    end
-    if prompt then fireproximityprompt(prompt) end
+    task.wait(0.3)
 end
 
 local function collectAllDragonBalls()
@@ -478,35 +444,20 @@ local function collectAllDragonBalls()
         if dragonBallAutoHop then task.spawn(serverHop) end
         return false
     end
-    local finished, total = 0, #balls
-    for _, ball in ipairs(balls) do
-        task.spawn(function()
-            local attempts = 0
-            local prevPos = ball.Parent and ball.Position or nil
-            repeat
-                collectDragonBall(ball)
-                attempts += 1
-                task.wait(0.4)
-                -- If ball hasn't moved after 3 attempts, it's bugged — purge and skip
-                if ball.Parent then
-                    local newPos = ball.Position
-                    if prevPos and (newPos - prevPos).Magnitude < 1 and attempts >= 3 then
-                        dragonBallCache[ball] = nil
-                        break
-                    end
-                    prevPos = newPos
-                end
-            until not ball.Parent or not dragonBallCache[ball] or attempts >= 5
-            finished += 1
-        end)
+    isCollecting = true
+    -- Up to 3 passes to catch any missed balls
+    for pass = 1, 3 do
+        if lastKnownCount >= 7 then break end
+        local current = getAllDragonBalls()
+        for _, ball in ipairs(current) do
+            if not dragonBallAutoCollect then break end
+            if lastKnownCount >= 7 then break end
+            collectDragonBall(ball)
+        end
+        if lastKnownCount >= 7 then break end
+        task.wait(0.5)
     end
-    -- Hard timeout so the system never hangs forever on bugged balls
-    local timeout = 0
-    while finished < total and timeout < 8 do
-        task.wait(0.1)
-        timeout += 0.1
-    end
-    DevNgg:Notify({ Title = "Dragon Balls Collected!", Content = total .. " Dragon Ball(s) processed.", Duration = 4 })
+    isCollecting = false
     return true
 end
 
@@ -680,10 +631,26 @@ local function startAutoCampaignLoop()
             local foundUnit, foundReason = checkCampaignList()
 
             if foundUnit then
-                teleportToPosition(foundUnit.Position)
+                -- Retry teleport until HRP exists and we actually land near the unit
+                local landed = false
+                for attempt = 1, 5 do
+                    local hrp = getHumanoidRootPart()
+                    if hrp and foundUnit and foundUnit.Parent then
+                        teleportToPosition(foundUnit.Position)
+                        task.wait(0.4)
+                        -- Verify we actually got close (within 30 studs)
+                        local hrp2 = getHumanoidRootPart()
+                        if hrp2 and foundUnit.Parent and (hrp2.Position - foundUnit.Position).Magnitude < 30 then
+                            landed = true
+                            break
+                        end
+                    else
+                        task.wait(0.5) -- wait for character to load
+                    end
+                end
                 DevNgg:Notify({
                     Title   = foundReason == "sparking" and "Sparking: " .. foundUnit.Name or "Found: " .. foundUnit.Name,
-                    Content = foundReason == "sparking" and "Sparking unit on this server!" or "Unit from list" .. (isSparking(foundUnit.Name) and "" or ""),
+                    Content = landed and "Teleported!" or "Found but teleport may have failed — check your position.",
                     Duration = 5,
                 })
                 autoCampaignEnabled = false
@@ -1088,51 +1055,45 @@ end
 -- Dragon Ball: event-driven + lightweight 3s fallback poll
 -- ══════════════════════════════════════════════════════════════
 
-local function onDragonBallDetected()
-    if not dragonBallAutoCollect or isCollecting or isHopping then return end
-    task.spawn(collectAllDragonBalls)
-end
-
--- React instantly when a new ball spawns in workspace
-workspace.DescendantAdded:Connect(function(obj)
-    if not dragonBallAutoCollect then return end
-    if isDragonBall(obj) then
-        task.wait(0.1)
-        onDragonBallDetected()
+-- UpdateDragonBallBackpack fires when OUR count changes.
+-- This is the ONLY signal we trust — workspace balls are permanent
+-- (they respawn every hour) so dragonBallsExist() is always true
+-- and cannot be used to decide whether to hop.
+-- UpdateDragonBallBackpack is the ONLY trigger we trust.
+-- Balls are permanent (respawn hourly) so dragonBallsExist() is
+-- always true and useless — we use lastCountTime instead.
+Events.UpdateDragonBallBackpack.OnClientEvent:Connect(function(count)
+    if count ~= lastKnownCount then
+        lastKnownCount = count
+        lastCountTime  = tick()
     end
+    if not dragonBallAutoCollect or isCollecting or isHopping then return end
+    if count >= 7 then return end
+    task.spawn(collectAllDragonBalls)
 end)
 
 local function startCollectLoop()
     if collectLoopThread then task.cancel(collectLoopThread) collectLoopThread = nil end
     collectLoopThread = task.spawn(function()
-        -- On first start, wait a moment then collect any balls already on the map
         task.wait(1.5)
-        if dragonBallsExist() then
-            onDragonBallDetected()
+        -- Collect any balls already on map on first start
+        if not isCollecting and not isHopping and lastKnownCount < 7 then
+            task.spawn(collectAllDragonBalls)
         end
-
         while dragonBallAutoCollect do
-            task.wait(3)
+            task.wait(5)
             if not dragonBallAutoCollect then break end
             if isCollecting or isHopping then continue end
-
-            if dragonBallsExist() then
-                -- Balls exist — collect them
-                onDragonBallDetected()
+            if lastKnownCount >= 7 then continue end
+            local timeSince = tick() - lastCountTime
+            if timeSince < 30 then
+                -- Count changed recently — keep collecting
+                task.spawn(collectAllDragonBalls)
             elseif dragonBallAutoHop then
-                -- No balls found — wait a few more seconds before hopping
-                -- in case a ball just spawned and hasn't hit the cache yet
-                task.wait(4)
-                if not dragonBallAutoCollect or isHopping then continue end
-
-                -- Final check before hopping
-                if dragonBallsExist() then
-                    onDragonBallDetected()
-                else
-                    DevNgg:Notify({ Title = "No Dragon Balls Found", Content = "No Dragon Balls on this server — hopping...", Duration = 2 })
-                    serverHop()
-                    task.wait(8)
-                end
+                -- No new ball in 30s — nothing left for us here
+                DevNgg:Notify({ Title = "No New Dragon Balls", Content = "Hopping to next server...", Duration = 2 })
+                serverHop()
+                task.wait(8)
             end
         end
     end)
@@ -2057,29 +2018,9 @@ AntiAfkTab:CreateButton({
 -- Waits 5 seconds after last ball disappears before hopping,
 -- so newly spawning balls are never missed.
 -- ══════════════════════════════════════════════════════════════
-local hopCooldownActive = false
-
-workspace.DescendantRemoving:Connect(function(obj)
-    if not dragonBallAutoHop or hopCooldownActive then return end
-    if not dragonBallCache[obj] then return end
-    hopCooldownActive = true
-    task.delay(5, function()  -- wait 5s — new ball might be about to spawn
-        if not dragonBallAutoHop then
-            hopCooldownActive = false
-            return
-        end
-        if dragonBallsExist() then
-            -- A ball spawned while we were waiting — collect it instead of hopping
-            if dragonBallAutoCollect then
-                onDragonBallDetected()
-            end
-        else
-            DevNgg:Notify({ Title = "All Dragon Balls Collected!", Content = "No more Dragon Balls — hopping to next server...", Duration = 3 })
-            task.spawn(serverHop)
-        end
-        hopCooldownActive = false
-    end)
-end)
+-- Section 23: hop logic is now fully handled by the collect loop
+-- using lastCountTime — no DescendantRemoving needed since balls
+-- are permanent and never actually leave workspace
 
 -- ══════════════════════════════════════════════════════════════
 -- SECTION 24: AUTO-LOAD LAST SELECTED CONFIG ON STARTUP
