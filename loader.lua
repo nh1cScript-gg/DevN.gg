@@ -1,19 +1,8 @@
 -- ╔══════════════════════════════════════════════════════════════════════╗
--- ║                  DevN.gg  UI Library  v4.2                         ║
--- ║        True Frosted Glass  ·  Soft Navy  ·  Minimalist             ║
+-- ║                  DevN.gg  UI Library  v4.3                         ║
+-- ║        Frosted Glass  ·  Soft Navy  ·  Minimalist                  ║
 -- ║             github.com/nh1cScript-gg/DevN.gg                       ║
 -- ╚══════════════════════════════════════════════════════════════════════╝
---
--- DESIGN PRINCIPLES v4.2
---   • HIGH transparency (0.45–0.65) so the blurred game world is VISIBLE
---   • BlurEffect size 20 — strong enough to actually see behind panels
---   • Text: pure white primary, soft white secondary — no dim blue
---   • Font: GothamLight for labels, GothamSemibold for headings (clean & thin)
---   • Sidebar tint: navy #022658 at ~50% opacity — game bleeds through
---   • Content cards: very dark navy at ~55% opacity — glass look
---   • Accent: #A8CFFF — pale periwinkle, eye-friendly, not electric
---   • Borders: single-pixel, very subtle — barely there
--- ════════════════════════════════════════════════════════════════════════
 
 local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -35,29 +24,29 @@ local saveFile      = "config"
 -- ══════════════════════════════════════════════════════════════
 local _openDropdowns = {}
 local function closeAllDropdowns()
-    for _, fn in ipairs(_openDropdowns) do pcall(fn) end
+    for _,fn in ipairs(_openDropdowns) do pcall(fn) end
     table.clear(_openDropdowns)
 end
-local function registerDropdown(fn)   table.insert(_openDropdowns, fn) end
+local function registerDropdown(fn)   table.insert(_openDropdowns,fn) end
 local function unregisterDropdown(fn)
-    for i = #_openDropdowns, 1, -1 do
-        if _openDropdowns[i] == fn then table.remove(_openDropdowns, i) end
+    for i=#_openDropdowns,1,-1 do
+        if _openDropdowns[i]==fn then table.remove(_openDropdowns,i) end
     end
 end
 
 -- ══════════════════════════════════════════════════════════════
--- CONFIG PERSISTENCE
+-- CONFIG
 -- ══════════════════════════════════════════════════════════════
 local function getSavePath() return saveFolder.."/"..saveFile..".json" end
 local function saveConfig()
     pcall(function()
         if not isfolder(saveFolder) then makefolder(saveFolder) end
-        local d = {}; for k,v in pairs(flags) do d[k]=v end
-        writefile(getSavePath(), HttpService:JSONEncode(d))
+        local d={}; for k,v in pairs(flags) do d[k]=v end
+        writefile(getSavePath(),HttpService:JSONEncode(d))
     end)
 end
 local function loadConfig()
-    local ok, r = pcall(function()
+    local ok,r=pcall(function()
         if isfolder(saveFolder) and isfile(getSavePath()) then
             return HttpService:JSONDecode(readfile(getSavePath()))
         end
@@ -70,102 +59,92 @@ end
 -- SAFE GUI PARENTING
 -- ══════════════════════════════════════════════════════════════
 local function safeParent(gui)
-    local ok = pcall(function() gui.Parent = game:GetService("CoreGui") end)
+    -- Try CoreGui first (works in most executors)
+    local ok=pcall(function() gui.Parent=game:GetService("CoreGui") end)
     if ok and gui.Parent then return end
-    ok = pcall(function() gui.Parent = gethui() end)
+    -- Fallback to gethui() if available
+    ok=pcall(function() gui.Parent=gethui() end)
     if ok and gui.Parent then return end
-    pcall(function() gui.Parent = playerGui end)
+    -- Last resort: PlayerGui
+    gui.Parent=playerGui
 end
 
 -- ══════════════════════════════════════════════════════════════
--- COLOUR PALETTE  v4.2
---
--- Key change from v4.1:
---   All backgrounds use HIGH transparency (0.45–0.65) so the
---   Lighting BlurEffect is actually VISIBLE behind the panels.
---   Text is BRIGHT (pure/near-white) so it pops against glass.
+-- COLOURS  — Frosted glass navy theme
+-- HIGH BackgroundTransparency (0.45-0.55) so the blurred game
+-- world is VISIBLE behind every panel.
 -- ══════════════════════════════════════════════════════════════
 local C = {
-    -- Glass tint colours (the actual colour seen through transparency)
-    SIDEBAR_TINT  = Color3.fromRGB(3,   34,  80),    -- #022658 navy tint
-    SURFACE_TINT  = Color3.fromRGB(6,   16,  42),    -- darker navy for cards
-    HDR_TINT      = Color3.fromRGB(2,   22,  58),    -- header strip tint
+    NAVY         = Color3.fromRGB(3,   34,  80),   -- #022658 base navy
+    DARK         = Color3.fromRGB(6,   14,  38),   -- darker navy for content
+    HDR          = Color3.fromRGB(2,   20,  56),   -- header/footer tint
 
-    -- Active tab pill — solid, opaque
-    TAB_ACTIVE_BG = Color3.fromRGB(255, 255, 255),   -- pure white pill
-    TAB_ACTIVE_FG = Color3.fromRGB(3,   34,  80),    -- navy text on white
+    TAB_ON_BG    = Color3.fromRGB(255, 255, 255),  -- active tab: white pill
+    TAB_ON_FG    = Color3.fromRGB(3,   34,  80),   -- active tab: navy text
+    TAB_OFF      = Color3.fromRGB(175, 208, 255),  -- idle tab text
 
-    -- Idle tab text
-    TAB_IDLE      = Color3.fromRGB(180, 210, 255),   -- soft periwinkle
+    BORDER       = Color3.fromRGB(90,  130, 210),  -- subtle border
+    BORDER_FOC   = Color3.fromRGB(168, 207, 255),  -- focused border
 
-    -- Borders — very thin, barely visible
-    BORDER        = Color3.fromRGB(80,  120, 200),   -- faint blue-white
-    BORDER_FOCUS  = Color3.fromRGB(168, 207, 255),   -- focus highlight
+    -- TEXT — all bright for legibility on glass
+    TXT_A        = Color3.fromRGB(255, 255, 255),  -- white: titles, active
+    TXT_B        = Color3.fromRGB(205, 222, 255),  -- soft white: labels
+    TXT_C        = Color3.fromRGB(130, 165, 220),  -- muted: hints, footer
 
-    -- ── TEXT — bright, readable ───────────────────────────────
-    -- Primary: pure white — maximum contrast on glass background
-    TXT_A         = Color3.fromRGB(255, 255, 255),   -- headings, active labels
-    -- Secondary: warm light blue-white — body text
-    TXT_B         = Color3.fromRGB(210, 225, 255),   -- toggle labels, button text
-    -- Tertiary: periwinkle — hints, placeholders, dim info
-    TXT_C         = Color3.fromRGB(130, 165, 220),   -- placeholder, footer
+    -- Accent
+    ACCENT       = Color3.fromRGB(168, 207, 255),  -- pale periwinkle
 
-    -- Accent — pale periwinkle, soft on eyes
-    ACCENT        = Color3.fromRGB(168, 207, 255),   -- #A8CFFF
-    ACCENT_DIM    = Color3.fromRGB(80,  130, 220),   -- deeper for focus rings
+    -- Toggle
+    TOG_ON       = Color3.fromRGB(150, 225, 175),  -- soft mint
+    TOG_ON_BG    = Color3.fromRGB(10,  44,  26),
+    TOG_OFF_BG   = Color3.fromRGB(8,   12,  28),
+    TOG_KNOB_OFF = Color3.fromRGB(110, 140, 190),
 
-    -- Toggle ON — soft mint (not neon)
-    ON            = Color3.fromRGB(160, 230, 185),
-    ON_PILL       = Color3.fromRGB(10,  45,  28),
-    OFF_PILL      = Color3.fromRGB(8,   12,  30),
+    -- Interactions
+    HOV          = Color3.fromRGB(18,  48, 108),
+    ACT          = Color3.fromRGB(30,  68, 148),
 
-    -- Interaction
-    HOV           = Color3.fromRGB(20,  50,  110),   -- hover tint
-    ACT           = Color3.fromRGB(35,  70,  150),   -- press tint
-
-    -- Utility
-    RED           = Color3.fromRGB(255, 100, 100),
-    AMBER         = Color3.fromRGB(255, 195,  80),
-    WHITE         = Color3.fromRGB(255, 255, 255),
+    RED          = Color3.fromRGB(255, 105, 105),
+    AMBER        = Color3.fromRGB(255, 195,  75),
 }
 
--- ── TRANSPARENCY TABLE ────────────────────────────────────────
--- These are HIGH values so the game world bleeds through visibly.
+-- Transparency — HIGH so glass effect is actually visible
 local T = {
-    SIDEBAR  = 0.48,   -- sidebar: game world clearly visible through navy
-    CONTENT  = 0.52,   -- content bg: glassy
-    SURFACE  = 0.55,   -- cards/rows: frosted glass
-    HDR      = 0.42,   -- header/footer strips: slightly less transparent
-    NOTIF    = 0.35,   -- notifications: more readable
-    CTRL     = 0.60,   -- control buttons (min/close)
+    SIDE   = 0.46,  -- sidebar
+    CONT   = 0.50,  -- content panel
+    SURF   = 0.52,  -- cards / rows
+    HDR    = 0.40,  -- header strips
+    NOTIF  = 0.30,
+    CTRL   = 0.55,  -- window control buttons
 }
 
-local FAST = TweenInfo.new(0.10, Enum.EasingStyle.Quint)
-local MED  = TweenInfo.new(0.20, Enum.EasingStyle.Quint)
-local function tw(o, i, p) TweenService:Create(o, i, p):Play() end
+local FAST = TweenInfo.new(0.10,Enum.EasingStyle.Quint)
+local MED  = TweenInfo.new(0.20,Enum.EasingStyle.Quint)
+local function tw(o,i,p) TweenService:Create(o,i,p):Play() end
 
--- ── FONTS ─────────────────────────────────────────────────────
--- GothamLight  = thin, modern, minimalist → labels, body text
--- GothamSemibold = clean weight for headings/titles
--- Gotham       = medium, for mid-weight elements
+-- Safe font lookup — GothamLight/RobotoMono may not exist in all executors
+local function safeFont(name, fallback)
+    local ok,f=pcall(function() return Enum.Font[name] end)
+    return (ok and f) or Enum.Font[fallback]
+end
 local F = {
-    TITLE  = Enum.Font.GothamBold,        -- window title
-    HEAD   = Enum.Font.GothamSemibold,    -- tab names, section headers, button text
-    BODY   = Enum.Font.Gotham,            -- toggle labels, paragraph body
-    LIGHT  = Enum.Font.GothamLight,       -- placeholder, hints, footer text
-    MONO   = Enum.Font.RobotoMono,        -- hex input in color picker
+    TITLE = Enum.Font.GothamBold,
+    HEAD  = Enum.Font.GothamSemibold,
+    BODY  = Enum.Font.Gotham,
+    LIGHT = safeFont("GothamLight",   "Gotham"),
+    MONO  = safeFont("RobotoMono",    "Code"),
 }
 
 -- ══════════════════════════════════════════════════════════════
--- INSTANCE HELPERS
+-- HELPERS
 -- ══════════════════════════════════════════════════════════════
-local function make(class, props, parent)
-    local obj = Instance.new(class)
+local function make(class,props,parent)
+    local obj=Instance.new(class)
     for k,v in pairs(props or {}) do obj[k]=v end
     if parent then obj.Parent=parent end
     return obj
 end
-local function corner(p,r) return make("UICorner",{CornerRadius=UDim.new(0,r or 6)},p) end
+local function corner(p,r) make("UICorner",{CornerRadius=UDim.new(0,r or 8)},p) end
 local function stroke(p,col,th,tr)
     return make("UIStroke",{
         Color=col or C.BORDER, Thickness=th or 1, Transparency=tr or 0,
@@ -173,9 +152,9 @@ local function stroke(p,col,th,tr)
     },p)
 end
 local function pad(p,t,b,l,r)
-    return make("UIPadding",{
-        PaddingTop=UDim.new(0,t or 0), PaddingBottom=UDim.new(0,b or 0),
-        PaddingLeft=UDim.new(0,l or 0), PaddingRight=UDim.new(0,r or 0),
+    make("UIPadding",{
+        PaddingTop=UDim.new(0,t or 0),PaddingBottom=UDim.new(0,b or 0),
+        PaddingLeft=UDim.new(0,l or 0),PaddingRight=UDim.new(0,r or 0),
     },p)
 end
 local function listL(p,sp,dir,ha,va)
@@ -196,18 +175,20 @@ local blurEffect = nil
 local guiVisible = true
 local DevNgg     = {}
 
--- Strong blur — size 20 means the game world behind is clearly
--- blurred/frosted, which is what makes the glass effect work.
-local function initBlur()
+-- Blur (strength 18 — strongly frosted)
+pcall(function()
     for _,c in ipairs(Lighting:GetChildren()) do
         if c:IsA("BlurEffect") and c.Name=="DevNggBlur" then c:Destroy() end
     end
-    blurEffect = make("BlurEffect",{Name="DevNggBlur",Size=0},Lighting)
-end
-task.spawn(initBlur)
+    blurEffect=make("BlurEffect",{Name="DevNggBlur",Size=0},Lighting)
+end)
 
 local function setBlur(on)
-    if blurEffect then tw(blurEffect, TweenInfo.new(0.25,Enum.EasingStyle.Quint), {Size=on and 20 or 0}) end
+    pcall(function()
+        if blurEffect then
+            tw(blurEffect,TweenInfo.new(0.25,Enum.EasingStyle.Quint),{Size=on and 18 or 0})
+        end
+    end)
 end
 
 function DevNgg:SetVisibility(val)
@@ -218,14 +199,14 @@ function DevNgg:SetVisibility(val)
 end
 function DevNgg:IsVisible() return guiVisible end
 function DevNgg:Destroy()
-    if blurEffect then blurEffect:Destroy() end
-    if mainFrame and mainFrame.Parent then mainFrame.Parent:Destroy() end
+    pcall(function() if blurEffect then blurEffect:Destroy() end end)
+    pcall(function() if mainFrame and mainFrame.Parent then mainFrame.Parent:Destroy() end end)
 end
 
 -- ══════════════════════════════════════════════════════════════
--- NOTIFICATION SYSTEM
+-- NOTIFICATIONS
 -- ══════════════════════════════════════════════════════════════
-local notifGui = make("ScreenGui",{
+local notifGui=make("ScreenGui",{
     Name="DevNggNotif",ResetOnSpawn=false,
     ZIndexBehavior=Enum.ZIndexBehavior.Sibling,DisplayOrder=999,
 })
@@ -233,68 +214,60 @@ pcall(function() notifGui.IgnoreGuiInset=true end)
 safeParent(notifGui)
 
 local nHolder=make("Frame",{
-    Name="NotifHolder",Size=UDim2.new(0,285,1,0),
-    Position=UDim2.new(1,-298,0,0),BackgroundTransparency=1,
+    Size=UDim2.new(0,285,1,0),Position=UDim2.new(1,-298,0,0),
+    BackgroundTransparency=1,
 },notifGui)
 listL(nHolder,6,Enum.FillDirection.Vertical,
     Enum.HorizontalAlignment.Right,Enum.VerticalAlignment.Bottom)
 pad(nHolder,0,18,0,0)
 
-local notifCount=0
+local nCount=0
 
 function DevNgg:Notify(cfg)
-    if notifCount>=5 then return end
-    notifCount+=1
-    local title    = cfg.Title    or "DevN.gg"
-    local content  = cfg.Content  or ""
-    local duration = cfg.Duration or 3
+    if nCount>=5 then return end; nCount+=1
+    local title=cfg.Title or "DevN.gg"
+    local body =cfg.Content or ""
+    local dur  =cfg.Duration or 3
 
     local card=make("Frame",{
-        Size=UDim2.new(1,0,0,66),
-        BackgroundColor3=C.SIDEBAR_TINT,
-        BackgroundTransparency=1,
-        BorderSizePixel=0, ClipsDescendants=true,
-    },nHolder)
-    corner(card,10)
+        Size=UDim2.new(1,0,0,66),BackgroundColor3=C.NAVY,
+        BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=true,
+    },nHolder); corner(card,10)
     local cs=stroke(card,C.BORDER,1,1)
 
-    local accentBar=make("Frame",{
+    local bar=make("Frame",{
         Size=UDim2.new(0,3,0,32),Position=UDim2.new(0,0,0.5,-16),
         BackgroundColor3=C.ACCENT,BackgroundTransparency=1,BorderSizePixel=0,
-    },card); corner(accentBar,2)
+    },card); corner(bar,2)
 
     local tL=make("TextLabel",{
         Size=UDim2.new(1,-20,0,20),Position=UDim2.new(0,14,0,11),
-        BackgroundTransparency=1,Text=title,
-        TextColor3=C.TXT_A,TextTransparency=1,TextSize=13,
-        Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Left,
+        BackgroundTransparency=1,Text=title,TextColor3=C.TXT_A,
+        TextTransparency=1,TextSize=13,Font=F.HEAD,
+        TextXAlignment=Enum.TextXAlignment.Left,
     },card)
     local sL=make("TextLabel",{
         Size=UDim2.new(1,-20,0,18),Position=UDim2.new(0,14,0,33),
-        BackgroundTransparency=1,Text=content,
-        TextColor3=C.TXT_B,TextTransparency=1,TextSize=11,
-        Font=F.BODY,TextXAlignment=Enum.TextXAlignment.Left,TextWrapped=true,
+        BackgroundTransparency=1,Text=body,TextColor3=C.TXT_B,
+        TextTransparency=1,TextSize=11,Font=F.BODY,
+        TextXAlignment=Enum.TextXAlignment.Left,TextWrapped=true,
     },card)
-
     local pb=make("Frame",{
         Size=UDim2.new(1,0,0,2),Position=UDim2.new(0,0,1,-2),
         BackgroundColor3=C.BORDER,BorderSizePixel=0,
     },card)
-    local pf=make("Frame",{
-        Size=UDim2.new(1,0,1,0),BackgroundColor3=C.ACCENT,BorderSizePixel=0,
-    },pb)
+    local pf=make("Frame",{Size=UDim2.new(1,0,1,0),BackgroundColor3=C.ACCENT,BorderSizePixel=0},pb)
 
     tw(card,MED,{BackgroundTransparency=T.NOTIF})
-    tw(cs,MED,{Transparency=0})
-    tw(accentBar,MED,{BackgroundTransparency=0})
+    tw(cs,MED,{Transparency=0}); tw(bar,MED,{BackgroundTransparency=0})
     tw(tL,MED,{TextTransparency=0}); tw(sL,MED,{TextTransparency=0})
-    tw(pf,TweenInfo.new(duration,Enum.EasingStyle.Linear),{Size=UDim2.new(0,0,1,0)})
+    tw(pf,TweenInfo.new(dur,Enum.EasingStyle.Linear),{Size=UDim2.new(0,0,1,0)})
 
-    task.delay(duration,function()
+    task.delay(dur,function()
         tw(card,MED,{BackgroundTransparency=1}); tw(cs,MED,{Transparency=1})
-        tw(accentBar,MED,{BackgroundTransparency=1})
+        tw(bar,MED,{BackgroundTransparency=1})
         tw(tL,MED,{TextTransparency=1}); tw(sL,MED,{TextTransparency=1})
-        task.wait(0.22); card:Destroy(); notifCount-=1
+        task.wait(0.22); card:Destroy(); nCount-=1
     end)
 end
 
@@ -302,239 +275,197 @@ end
 -- CREATE WINDOW
 -- ══════════════════════════════════════════════════════════════
 function DevNgg:CreateWindow(config)
-    local winTitle  = config.Name            or "DevN.gg"
-    local winSub    = config.LoadingSubtitle or "by DevN.gg"
-    local winVer    = config.Version         or "v1.0"
-    local toggleKey = config.ToggleUIKeybind or "K"
-    local loadTitle = config.LoadingTitle    or winTitle
-    local loadSub   = config.LoadingSubtitle or "Loading..."
+    local winTitle  = config.Name              or "DevN.gg"
+    local winSub    = config.Subtitle          or "by DevN.gg"
+    local winVer    = config.Version           or "v1.0"
+    local toggleKey = config.ToggleUIKeybind   or "K"
+    local loadTitle = config.LoadingTitle      or winTitle
+    local loadSub   = config.LoadingSubtitle   or "Loading..."
 
     if config.ConfigurationSaving and config.ConfigurationSaving.Enabled then
-        saveFolder = config.ConfigurationSaving.FolderName or saveFolder
-        saveFile   = config.ConfigurationSaving.FileName   or saveFile
+        saveFolder=config.ConfigurationSaving.FolderName or saveFolder
+        saveFile  =config.ConfigurationSaving.FileName   or saveFile
     end
 
-    local screenGui=make("ScreenGui",{
+    -- ── ScreenGui ─────────────────────────────────────────────
+    local sg=make("ScreenGui",{
         Name="DevNggGUI",ResetOnSpawn=false,
         ZIndexBehavior=Enum.ZIndexBehavior.Sibling,DisplayOrder=100,
     })
-    pcall(function() screenGui.IgnoreGuiInset=true end)
-    safeParent(screenGui)
+    pcall(function() sg.IgnoreGuiInset=true end)
+    safeParent(sg)
 
-    -- ── Loading Screen ────────────────────────────────────────
-    local loadFrame=make("Frame",{
-        Size=UDim2.new(0,360,0,120),Position=UDim2.new(0.5,-180,0.5,-60),
-        BackgroundColor3=C.SIDEBAR_TINT,BackgroundTransparency=T.SIDEBAR,
+    -- ── Loading bar ───────────────────────────────────────────
+    -- Shown immediately (no delay), destroyed after ~1.5s
+    local lf=make("Frame",{
+        Size=UDim2.new(0,340,0,110),Position=UDim2.new(0.5,-170,0.5,-55),
+        BackgroundColor3=C.NAVY,BackgroundTransparency=T.SIDE,
         BorderSizePixel=0,ZIndex=50,
-    },screenGui)
-    corner(loadFrame,12); stroke(loadFrame,C.BORDER,1)
+    },sg); corner(lf,12); stroke(lf,C.BORDER,1,0.4)
 
     make("TextLabel",{
-        Size=UDim2.new(1,-28,0,24),Position=UDim2.new(0,14,0,18),
-        BackgroundTransparency=1,Text=loadTitle,
-        TextColor3=C.TXT_A,TextSize=17,Font=F.TITLE,
-        TextXAlignment=Enum.TextXAlignment.Center,ZIndex=51,
-    },loadFrame)
+        Size=UDim2.new(1,-28,0,22),Position=UDim2.new(0,14,0,16),
+        BackgroundTransparency=1,Text=loadTitle,TextColor3=C.TXT_A,
+        TextSize=16,Font=F.TITLE,TextXAlignment=Enum.TextXAlignment.Center,ZIndex=51,
+    },lf)
     make("TextLabel",{
-        Size=UDim2.new(1,-28,0,14),Position=UDim2.new(0,14,0,45),
-        BackgroundTransparency=1,Text=loadSub,
-        TextColor3=C.TXT_C,TextSize=11,Font=F.LIGHT,
-        TextXAlignment=Enum.TextXAlignment.Center,ZIndex=51,
-    },loadFrame)
+        Size=UDim2.new(1,-28,0,14),Position=UDim2.new(0,14,0,42),
+        BackgroundTransparency=1,Text=loadSub,TextColor3=C.TXT_C,
+        TextSize=11,Font=F.LIGHT,TextXAlignment=Enum.TextXAlignment.Center,ZIndex=51,
+    },lf)
 
     local pt=make("Frame",{
-        Size=UDim2.new(1,-28,0,2),Position=UDim2.new(0,14,0,74),
+        Size=UDim2.new(1,-28,0,2),Position=UDim2.new(0,14,0,68),
         BackgroundColor3=C.BORDER,BorderSizePixel=0,ZIndex=51,
-    },loadFrame); corner(pt,2)
-    local pBar=make("Frame",{
-        Size=UDim2.new(0,0,1,0),BackgroundColor3=C.ACCENT,BorderSizePixel=0,ZIndex=52,
-    },pt); corner(pBar,2)
+    },lf); corner(pt,2)
+    local pBar=make("Frame",{Size=UDim2.new(0,0,1,0),BackgroundColor3=C.ACCENT,BorderSizePixel=0,ZIndex=52},pt)
+    corner(pBar,2)
 
-    local lStatus=make("TextLabel",{
-        Size=UDim2.new(1,-28,0,14),Position=UDim2.new(0,14,0,84),
-        BackgroundTransparency=1,Text="Initialising...",
-        TextColor3=C.TXT_C,TextSize=10,Font=F.LIGHT,
-        TextXAlignment=Enum.TextXAlignment.Center,ZIndex=51,
-    },loadFrame)
+    local lStat=make("TextLabel",{
+        Size=UDim2.new(1,-28,0,14),Position=UDim2.new(0,14,0,78),
+        BackgroundTransparency=1,Text="Loading...",TextColor3=C.TXT_C,
+        TextSize=10,Font=F.LIGHT,TextXAlignment=Enum.TextXAlignment.Center,ZIndex=51,
+    },lf)
 
-    task.spawn(function()
-        for _,s in ipairs({
-            {p=0.3,m="Loading components..."},
-            {p=0.6,m="Applying theme..."},
-            {p=0.85,m="Connecting..."},
-            {p=1.0,m="Ready!"},
-        }) do
-            tw(pBar,TweenInfo.new(0.3,Enum.EasingStyle.Quint),{Size=UDim2.new(s.p,0,1,0)})
-            lStatus.Text=s.m; task.wait(0.34)
-        end
-        task.wait(0.18)
-        tw(loadFrame,MED,{BackgroundTransparency=1})
-        for _,d in ipairs(loadFrame:GetDescendants()) do
-            if d:IsA("TextLabel") then tw(d,MED,{TextTransparency=1})
-            elseif d:IsA("Frame") then tw(d,MED,{BackgroundTransparency=1}) end
-        end
-        task.wait(0.25); loadFrame:Destroy()
-    end)
-
-    -- ══════════════════════════════════════════════════════════
-    -- MAIN WINDOW FRAME
-    -- ══════════════════════════════════════════════════════════
-    local SW     = 175   -- sidebar width
-    local WIN_W  = 610
-    local WIN_MIN= 420
+    -- ── Main window ────────────────────────────────────────────
+    local SW=175; local WW=610; local WH=420
 
     local main=make("Frame",{
-        Name="Main",Size=UDim2.new(0,WIN_W,0,WIN_MIN),
-        Position=UDim2.new(0.5,-WIN_W/2,0.5,-WIN_MIN/2),
-        -- Outer frame: very transparent navy, lets blur through
-        BackgroundColor3=C.SIDEBAR_TINT,
-        BackgroundTransparency=T.CONTENT,
-        BorderSizePixel=0,ClipsDescendants=false,Visible=false,
-    },screenGui)
-    corner(main,12)
-    stroke(main,C.BORDER,1,0.5)   -- very subtle outer border
+        Name="Main",Size=UDim2.new(0,WW,0,WH),
+        Position=UDim2.new(0.5,-WW/2,0.5,-WH/2),
+        BackgroundColor3=C.DARK,BackgroundTransparency=T.CONT,
+        BorderSizePixel=0,ClipsDescendants=false,
+        Visible=false,  -- shown after loading finishes
+    },sg)
+    corner(main,12); stroke(main,C.BORDER,1,0.5)
     mainFrame=main
 
-    task.delay(1.80,function() main.Visible=true end)
-
-    -- Soft glow shadow underneath
+    -- Shadow
     make("ImageLabel",{
         AnchorPoint=Vector2.new(0.5,0.5),
         Size=UDim2.new(1,80,1,80),Position=UDim2.new(0.5,0,0.5,12),
         BackgroundTransparency=1,Image="rbxassetid://6014054385",
-        ImageColor3=Color3.fromRGB(2,20,60),ImageTransparency=0.5,
+        ImageColor3=Color3.fromRGB(0,10,40),ImageTransparency=0.5,
         ScaleType=Enum.ScaleType.Slice,SliceCenter=Rect.new(49,49,450,450),ZIndex=0,
     },main)
 
-    -- ── SIDEBAR ───────────────────────────────────────────────
-    local sidebar=make("Frame",{
+    -- ── Sidebar ────────────────────────────────────────────────
+    local side=make("Frame",{
         Name="Sidebar",Size=UDim2.new(0,SW,1,0),
-        BackgroundColor3=C.SIDEBAR_TINT,
-        BackgroundTransparency=T.SIDEBAR,   -- ← HIGH: game visible through navy
+        BackgroundColor3=C.NAVY,BackgroundTransparency=T.SIDE,
         BorderSizePixel=0,ZIndex=3,ClipsDescendants=true,
-    },main)
-    corner(sidebar,12)
-    -- Square off the right edge of the sidebar
+    },main); corner(side,12)
+
+    -- Square the right edge of sidebar
     make("Frame",{
         Size=UDim2.new(0,12,1,0),Position=UDim2.new(1,-12,0,0),
-        BackgroundColor3=C.SIDEBAR_TINT,BackgroundTransparency=T.SIDEBAR,
+        BackgroundColor3=C.NAVY,BackgroundTransparency=T.SIDE,
         BorderSizePixel=0,ZIndex=4,
-    },sidebar)
-    -- Right border line separating sidebar from content
+    },side)
+    -- Right divider
     make("Frame",{
         Size=UDim2.new(0,1,1,0),Position=UDim2.new(1,-1,0,0),
         BackgroundColor3=C.BORDER,BackgroundTransparency=0.6,BorderSizePixel=0,ZIndex=5,
-    },sidebar)
+    },side)
 
-    -- Sidebar header
+    -- Sidebar header (drag handle)
     local sHdr=make("Frame",{
-        Size=UDim2.new(1,0,0,76),
-        BackgroundColor3=C.HDR_TINT,BackgroundTransparency=T.HDR,
-        BorderSizePixel=0,ZIndex=5,
-    },sidebar)
+        Size=UDim2.new(1,0,0,76),BackgroundColor3=C.HDR,
+        BackgroundTransparency=T.HDR,BorderSizePixel=0,ZIndex=5,
+    },side)
     make("TextLabel",{
-        Size=UDim2.new(1,-14,0,20),Position=UDim2.new(0,12,0,16),
-        BackgroundTransparency=1,Text=winTitle,
-        TextColor3=C.TXT_A,TextSize=15,Font=F.TITLE,
-        TextXAlignment=Enum.TextXAlignment.Left,ZIndex=6,
+        Size=UDim2.new(1,-14,0,20),Position=UDim2.new(0,12,0,15),
+        BackgroundTransparency=1,Text=winTitle,TextColor3=C.TXT_A,
+        TextSize=15,Font=F.TITLE,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=6,
     },sHdr)
     make("TextLabel",{
-        Size=UDim2.new(1,-14,0,14),Position=UDim2.new(0,12,0,40),
-        BackgroundTransparency=1,Text=winSub.."  "..winVer,
-        TextColor3=C.TXT_C,TextSize=10,Font=F.LIGHT,
-        TextXAlignment=Enum.TextXAlignment.Left,ZIndex=6,
+        Size=UDim2.new(1,-14,0,14),Position=UDim2.new(0,12,0,39),
+        BackgroundTransparency=1,Text=winSub.."  "..winVer,TextColor3=C.TXT_C,
+        TextSize=10,Font=F.LIGHT,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=6,
     },sHdr)
-    -- hairline under header
     make("Frame",{
         Size=UDim2.new(1,-20,0,1),Position=UDim2.new(0,10,1,-1),
         BackgroundColor3=C.BORDER,BackgroundTransparency=0.5,BorderSizePixel=0,ZIndex=6,
     },sHdr)
 
-    -- Tab scroll area
+    -- Tab scroll
     local sScroll=make("ScrollingFrame",{
-        Size=UDim2.new(1,0,1,-114),Position=UDim2.new(0,0,0,77),
+        Size=UDim2.new(1,0,1,-113),Position=UDim2.new(0,0,0,77),
         BackgroundTransparency=1,BorderSizePixel=0,
         ScrollBarThickness=2,ScrollBarImageColor3=C.BORDER,
-        CanvasSize=UDim2.new(0,0,0,0),AutomaticCanvasSize=Enum.AutomaticSize.Y,ZIndex=4,
-    },sidebar)
-    pad(sScroll,8,8,0,0); listL(sScroll,2)
+        CanvasSize=UDim2.new(0,0,0,0),AutomaticCanvasSize=Enum.AutomaticSize.Y,
+        ZIndex=4,
+    },side); pad(sScroll,8,8,0,0); listL(sScroll,2)
 
     -- Sidebar footer
-    local sFooter=make("Frame",{
-        Size=UDim2.new(1,0,0,36),Position=UDim2.new(0,0,1,-36),
-        BackgroundColor3=C.HDR_TINT,BackgroundTransparency=T.HDR,
-        BorderSizePixel=0,ZIndex=4,
-    },sidebar)
+    local sFoot=make("Frame",{
+        Size=UDim2.new(1,0,0,35),Position=UDim2.new(0,0,1,-35),
+        BackgroundColor3=C.HDR,BackgroundTransparency=T.HDR,BorderSizePixel=0,ZIndex=4,
+    },side)
     make("Frame",{
         Size=UDim2.new(1,-20,0,1),Position=UDim2.new(0,10,0,0),
         BackgroundColor3=C.BORDER,BackgroundTransparency=0.5,BorderSizePixel=0,ZIndex=5,
-    },sFooter)
+    },sFoot)
     make("TextLabel",{
         Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,
         Text="[ "..toggleKey.." ]  Toggle",TextColor3=C.TXT_C,
         TextSize=10,Font=F.LIGHT,TextXAlignment=Enum.TextXAlignment.Center,ZIndex=5,
-    },sFooter)
+    },sFoot)
 
-    -- ── CONTENT PANEL ─────────────────────────────────────────
+    -- ── Content panel ──────────────────────────────────────────
     local cPanel=make("Frame",{
-        Name="ContentPanel",Size=UDim2.new(1,-SW,1,0),Position=UDim2.new(0,SW,0,0),
-        BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=T.CONTENT,
+        Name="Content",Size=UDim2.new(1,-SW,1,0),Position=UDim2.new(0,SW,0,0),
+        BackgroundColor3=C.DARK,BackgroundTransparency=T.CONT,
         BorderSizePixel=0,ClipsDescendants=true,
-    },main)
-    corner(cPanel,12)
+    },main); corner(cPanel,12)
     -- Square left edge
     make("Frame",{
-        Size=UDim2.new(0,12,1,0),
-        BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=T.CONTENT,
-        BorderSizePixel=0,
+        Size=UDim2.new(0,12,1,0),BackgroundColor3=C.DARK,
+        BackgroundTransparency=T.CONT,BorderSizePixel=0,
     },cPanel)
 
-    -- Content header bar
+    -- Content header
     local cHdr=make("Frame",{
-        Size=UDim2.new(1,0,0,48),
-        BackgroundColor3=C.HDR_TINT,BackgroundTransparency=T.HDR,
-        BorderSizePixel=0,ZIndex=3,
+        Size=UDim2.new(1,0,0,48),BackgroundColor3=C.HDR,
+        BackgroundTransparency=T.HDR,BorderSizePixel=0,ZIndex=3,
     },cPanel)
-    local tabTitle=make("TextLabel",{
+    local tabTitleLbl=make("TextLabel",{
         Size=UDim2.new(1,-90,1,0),Position=UDim2.new(0,14,0,0),
-        BackgroundTransparency=1,Text="",
-        TextColor3=C.TXT_A,TextSize=15,Font=F.HEAD,
-        TextXAlignment=Enum.TextXAlignment.Left,ZIndex=4,
+        BackgroundTransparency=1,Text="",TextColor3=C.TXT_A,
+        TextSize=15,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=4,
     },cHdr)
     make("Frame",{
         Size=UDim2.new(1,0,0,1),Position=UDim2.new(0,0,1,0),
         BackgroundColor3=C.BORDER,BackgroundTransparency=0.5,BorderSizePixel=0,ZIndex=4,
     },cHdr)
 
-    -- Close / Minimise buttons
-    local function mkCtrl(offX,sym,hcol)
+    -- Window controls (close / minimise)
+    local function mkBtn(offX,sym,hcol)
         local b=make("TextButton",{
             Size=UDim2.new(0,26,0,26),Position=UDim2.new(1,offX,0.5,-13),
-            BackgroundColor3=C.SIDEBAR_TINT,BackgroundTransparency=T.CTRL,
+            BackgroundColor3=C.NAVY,BackgroundTransparency=T.CTRL,
             Text=sym,TextColor3=C.TXT_C,TextSize=14,Font=F.HEAD,
             BorderSizePixel=0,AutoButtonColor=false,ZIndex=10,
-        },cHdr)
-        corner(b,5); stroke(b,C.BORDER,1,0.4)
+        },cHdr); corner(b,5); stroke(b,C.BORDER,1,0.5)
         b.MouseEnter:Connect(function()
-            tw(b,FAST,{TextColor3=hcol or C.TXT_A,BackgroundColor3=C.HOV,BackgroundTransparency=0.2})
+            tw(b,FAST,{TextColor3=hcol,BackgroundColor3=C.HOV,BackgroundTransparency=0.2})
         end)
         b.MouseLeave:Connect(function()
-            tw(b,FAST,{TextColor3=C.TXT_C,BackgroundColor3=C.SIDEBAR_TINT,BackgroundTransparency=T.CTRL})
+            tw(b,FAST,{TextColor3=C.TXT_C,BackgroundColor3=C.NAVY,BackgroundTransparency=T.CTRL})
         end)
         return b
     end
-
     local minimized=false
-    local closeBtn=mkCtrl(-36,"×",C.RED)
-    local minBtn  =mkCtrl(-68,"−",C.AMBER)
+    local closeBtn=mkBtn(-36,"×",C.RED)
+    local minBtn  =mkBtn(-68,"−",C.AMBER)
     closeBtn.MouseButton1Click:Connect(function() DevNgg:SetVisibility(false) end)
 
     local cClip=make("Frame",{
-        Name="ContentClip",Size=UDim2.new(1,0,1,-49),Position=UDim2.new(0,0,0,49),
+        Size=UDim2.new(1,0,1,-49),Position=UDim2.new(0,0,0,49),
         BackgroundTransparency=1,ClipsDescendants=true,ZIndex=2,
     },cPanel)
 
-    -- ── DRAG ──────────────────────────────────────────────────
+    -- ── Drag ──────────────────────────────────────────────────
     local dragging,dragStart,startPos
     sHdr.InputBegan:Connect(function(i)
         if i.UserInputType==Enum.UserInputType.MouseButton1 then
@@ -552,12 +483,47 @@ function DevNgg:CreateWindow(config)
         if i.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false end
     end)
 
+    -- Toggle keybind
     UserInputService.InputBegan:Connect(function(i,gpe)
         if gpe then return end
         pcall(function()
             local key=typeof(toggleKey)=="string" and Enum.KeyCode[toggleKey] or toggleKey
             if i.KeyCode==key then DevNgg:SetVisibility(not guiVisible) end
         end)
+    end)
+
+    -- ── Loading animation then show main ───────────────────────
+    -- Run synchronously so nothing can silently error and skip showing the GUI
+    task.spawn(function()
+        local steps={
+            {p=0.3,m="Loading components..."},
+            {p=0.6,m="Applying theme..."},
+            {p=0.85,m="Connecting..."},
+            {p=1.0,m="Ready!"},
+        }
+        for _,s in ipairs(steps) do
+            pcall(function()
+                tw(pBar,TweenInfo.new(0.28,Enum.EasingStyle.Quint),{Size=UDim2.new(s.p,0,1,0)})
+                lStat.Text=s.m
+            end)
+            task.wait(0.30)
+        end
+        task.wait(0.15)
+
+        -- *** Show main window FIRST, then fade out loader ***
+        main.Visible=true
+        setBlur(true)
+
+        -- Fade out loader
+        pcall(function()
+            for _,d in ipairs(lf:GetDescendants()) do
+                if d:IsA("TextLabel") then tw(d,MED,{TextTransparency=1})
+                elseif d:IsA("Frame") then tw(d,MED,{BackgroundTransparency=1}) end
+            end
+            tw(lf,MED,{BackgroundTransparency=1})
+        end)
+        task.wait(0.25)
+        pcall(function() lf:Destroy() end)
     end)
 
     -- ══════════════════════════════════════════════════════════
@@ -567,28 +533,34 @@ function DevNgg:CreateWindow(config)
 
     local function updateH()
         if not activeTab or minimized then return end
-        local h=math.clamp(activeTab.ll.AbsoluteContentSize.Y+49+24,WIN_MIN,580)
-        tw(main,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{Size=UDim2.new(0,WIN_W,0,h)})
+        local h=math.clamp(activeTab.ll.AbsoluteContentSize.Y+49+24,WH,580)
+        tw(main,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{Size=UDim2.new(0,WW,0,h)})
     end
 
     local function switchTab(tab)
         closeAllDropdowns()
         for _,t in ipairs(tabs) do
             t.content.Visible=false
-            tw(t.btn,FAST,{BackgroundColor3=C.SIDEBAR_TINT,BackgroundTransparency=1,TextColor3=C.TAB_IDLE})
+            tw(t.btn,FAST,{
+                BackgroundColor3=C.NAVY,BackgroundTransparency=1,TextColor3=C.TAB_OFF,
+            })
             if t.acc then tw(t.acc,FAST,{BackgroundTransparency=1}) end
         end
-        tab.content.Visible=true; activeTab=tab; tabTitle.Text=tab.name
-        tw(tab.btn,FAST,{BackgroundColor3=C.TAB_ACTIVE_BG,BackgroundTransparency=0,TextColor3=C.TAB_ACTIVE_FG})
+        tab.content.Visible=true; activeTab=tab
+        tabTitleLbl.Text=tab.name
+        tw(tab.btn,FAST,{
+            BackgroundColor3=C.TAB_ON_BG,BackgroundTransparency=0,TextColor3=C.TAB_ON_FG,
+        })
         if tab.acc then tw(tab.acc,FAST,{BackgroundTransparency=0}) end
         updateH()
     end
 
     minBtn.MouseButton1Click:Connect(function()
         minimized=not minimized; closeAllDropdowns()
-        cClip.Visible=not minimized; sScroll.Visible=not minimized; sFooter.Visible=not minimized
+        cClip.Visible=not minimized
+        sScroll.Visible=not minimized; sFoot.Visible=not minimized
         if minimized then
-            tw(main,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{Size=UDim2.new(0,WIN_W,0,48)})
+            tw(main,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{Size=UDim2.new(0,WW,0,48)})
         else updateH() end
         minBtn.Text=minimized and "+" or "−"
     end)
@@ -601,16 +573,15 @@ function DevNgg:CreateWindow(config)
     function Window:CreateTab(name,_icon)
         tabCount+=1; local idx=tabCount
 
-        -- Sidebar tab button
+        -- Sidebar button
         local sBtn=make("TextButton",{
             Name=name,Size=UDim2.new(1,-14,0,36),Position=UDim2.new(0,7,0,0),
-            BackgroundColor3=C.TAB_ACTIVE_BG,BackgroundTransparency=1,
+            BackgroundColor3=C.TAB_ON_BG,BackgroundTransparency=1,
             BorderSizePixel=0,Text="  "..name,
-            TextColor3=C.TAB_IDLE,TextSize=12,Font=F.HEAD,
+            TextColor3=C.TAB_OFF,TextSize=12,Font=F.HEAD,
             AutoButtonColor=false,TextXAlignment=Enum.TextXAlignment.Left,
             LayoutOrder=idx,ZIndex=5,
-        },sScroll)
-        corner(sBtn,7)
+        },sScroll); corner(sBtn,7)
 
         local sAcc=make("Frame",{
             Size=UDim2.new(0,3,0,18),Position=UDim2.new(0,0,0.5,-9),
@@ -623,10 +594,10 @@ function DevNgg:CreateWindow(config)
         end)
         sBtn.MouseLeave:Connect(function()
             if activeTab and activeTab.btn==sBtn then return end
-            tw(sBtn,FAST,{BackgroundColor3=C.SIDEBAR_TINT,BackgroundTransparency=1,TextColor3=C.TAB_IDLE})
+            tw(sBtn,FAST,{BackgroundColor3=C.NAVY,BackgroundTransparency=1,TextColor3=C.TAB_OFF})
         end)
 
-        -- Content scroll frame
+        -- Content scroll
         local tSF=make("ScrollingFrame",{
             Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,BorderSizePixel=0,
             ScrollBarThickness=3,ScrollBarImageColor3=C.BORDER,
@@ -637,8 +608,7 @@ function DevNgg:CreateWindow(config)
             SortOrder=Enum.SortOrder.LayoutOrder,
             HorizontalAlignment=Enum.HorizontalAlignment.Center,
             Padding=UDim.new(0,5),
-        },tSF)
-        pad(tSF,12,18,12,12)
+        },tSF); pad(tSF,12,18,12,12)
 
         local tabData={name=name,btn=sBtn,acc=sAcc,content=tSF,ll=tLL}
         table.insert(tabs,tabData)
@@ -651,21 +621,20 @@ function DevNgg:CreateWindow(config)
         local content=tSF
         local Tab={}
 
-        -- ════════════════════════════════════════════
-        -- ELEMENT BUILDERS
-        -- ════════════════════════════════════════════
+        -- ────────────────────────────────────────────────────
+        -- ELEMENTS
+        -- ────────────────────────────────────────────────────
 
-        -- ── Section label ────────────────────────────
         function Tab:CreateSection(sName)
             local row=make("Frame",{Size=UDim2.new(1,0,0,24),BackgroundTransparency=1},content)
             make("Frame",{
                 Size=UDim2.new(1,0,0,1),Position=UDim2.new(0,0,0.5,0),
-                BackgroundColor3=C.BORDER,BackgroundTransparency=0.45,BorderSizePixel=0,
+                BackgroundColor3=C.BORDER,BackgroundTransparency=0.5,BorderSizePixel=0,
             },row)
             local pill=make("Frame",{
-                BackgroundColor3=C.SIDEBAR_TINT,BackgroundTransparency=0.15,
+                BackgroundColor3=C.NAVY,BackgroundTransparency=0.2,
                 BorderSizePixel=0,AutomaticSize=Enum.AutomaticSize.X,Size=UDim2.new(0,0,1,0),
-            },row); corner(pill,4)
+            },row); corner(pill,5)
             make("TextLabel",{
                 BackgroundTransparency=1,AutomaticSize=Enum.AutomaticSize.X,
                 Size=UDim2.new(0,0,1,0),Text="  "..sName:upper().."  ",
@@ -677,53 +646,49 @@ function DevNgg:CreateWindow(config)
             return S
         end
 
-        -- ── Divider ──────────────────────────────────
         function Tab:CreateDivider()
             local d=make("Frame",{
                 Size=UDim2.new(1,0,0,1),BackgroundColor3=C.BORDER,
-                BackgroundTransparency=0.45,BorderSizePixel=0,
+                BackgroundTransparency=0.5,BorderSizePixel=0,
             },content)
             local D={}; function D:Set(v) d.Visible=v end; return D
         end
 
-        -- ── Label ────────────────────────────────────
         function Tab:CreateLabel(cfg)
             local f=make("Frame",{
-                Size=UDim2.new(1,0,0,38),BackgroundColor3=C.SURFACE_TINT,
-                BackgroundTransparency=T.SURFACE,BorderSizePixel=0,
+                Size=UDim2.new(1,0,0,38),BackgroundColor3=C.DARK,
+                BackgroundTransparency=T.SURF,BorderSizePixel=0,
             },content); corner(f,8); stroke(f,C.BORDER,1,0.5)
             local lbl=make("TextLabel",{
                 Size=UDim2.new(1,-20,1,0),Position=UDim2.new(0,10,0,0),
-                BackgroundTransparency=1,Text=cfg.Text or "",
-                TextColor3=C.TXT_B,TextSize=12,Font=F.BODY,
-                TextXAlignment=Enum.TextXAlignment.Left,TextWrapped=true,
+                BackgroundTransparency=1,Text=cfg.Text or "",TextColor3=C.TXT_B,
+                TextSize=12,Font=F.BODY,TextXAlignment=Enum.TextXAlignment.Left,TextWrapped=true,
             },f)
             local L={}
-            function L:Set(t)      lbl.Text=t end
+            function L:Set(t) lbl.Text=t end
             function L:SetColor(c) lbl.TextColor3=c end
             return L
         end
 
-        -- ── Paragraph ────────────────────────────────
         function Tab:CreateParagraph(cfg)
             local f=make("Frame",{
                 Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
-                BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=T.SURFACE,BorderSizePixel=0,
+                BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF,BorderSizePixel=0,
             },content); corner(f,8); stroke(f,C.BORDER,1,0.5)
             local inner=make("Frame",{Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1},f)
             pad(inner,10,10,12,12)
             make("UIListLayout",{SortOrder=Enum.SortOrder.LayoutOrder,Padding=UDim.new(0,4)},inner)
             local tL=make("TextLabel",{
                 Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
-                BackgroundTransparency=1,Text=cfg.Title or "",
-                TextColor3=C.TXT_A,TextSize=13,Font=F.HEAD,
-                TextXAlignment=Enum.TextXAlignment.Left,TextWrapped=true,LayoutOrder=1,
+                BackgroundTransparency=1,Text=cfg.Title or "",TextColor3=C.TXT_A,
+                TextSize=13,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Left,
+                TextWrapped=true,LayoutOrder=1,
             },inner)
             local bL=make("TextLabel",{
                 Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
-                BackgroundTransparency=1,Text=cfg.Content or "",
-                TextColor3=C.TXT_B,TextSize=12,Font=F.BODY,
-                TextXAlignment=Enum.TextXAlignment.Left,TextWrapped=true,LayoutOrder=2,
+                BackgroundTransparency=1,Text=cfg.Content or "",TextColor3=C.TXT_B,
+                TextSize=12,Font=F.BODY,TextXAlignment=Enum.TextXAlignment.Left,
+                TextWrapped=true,LayoutOrder=2,
             },inner)
             local P={}
             function P:Set(t,b)      tL.Text=t or tL.Text; bL.Text=b or bL.Text end
@@ -732,24 +697,20 @@ function DevNgg:CreateWindow(config)
             return P
         end
 
-        -- ── Toggle ───────────────────────────────────
         function Tab:CreateToggle(cfg)
             local flag=cfg.Flag; local enabled=cfg.CurrentValue or false
 
             local row=make("TextButton",{
-                Size=UDim2.new(1,0,0,48),
-                BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=T.SURFACE,
-                BorderSizePixel=0,Text="",AutoButtonColor=false,
+                Size=UDim2.new(1,0,0,48),BackgroundColor3=C.DARK,
+                BackgroundTransparency=T.SURF,BorderSizePixel=0,Text="",AutoButtonColor=false,
             },content); corner(row,8)
             local rs=stroke(row,C.BORDER,1,0.5)
 
-            -- Active accent stripe (left edge)
             local stripe=make("Frame",{
                 Size=UDim2.new(0,3,0,26),Position=UDim2.new(0,0,0.5,-13),
                 BackgroundColor3=C.ACCENT,BackgroundTransparency=1,BorderSizePixel=0,
             },row); corner(stripe,2)
 
-            -- Label — bright, clearly readable
             local lbl=make("TextLabel",{
                 Size=UDim2.new(1,-68,1,0),Position=UDim2.new(0,14,0,0),
                 BackgroundTransparency=1,Text=cfg.Name or "Toggle",
@@ -757,34 +718,33 @@ function DevNgg:CreateWindow(config)
                 TextXAlignment=Enum.TextXAlignment.Left,
             },row)
 
-            -- Toggle pill
             local pill=make("Frame",{
                 Size=UDim2.new(0,40,0,22),Position=UDim2.new(1,-52,0.5,-11),
-                BackgroundColor3=C.OFF_PILL,BorderSizePixel=0,
+                BackgroundColor3=C.TOG_OFF_BG,BorderSizePixel=0,
             },row); corner(pill,11); stroke(pill,C.BORDER,1,0.4)
 
             local knob=make("Frame",{
                 Size=UDim2.new(0,16,0,16),Position=UDim2.new(0,3,0.5,-8),
-                BackgroundColor3=C.TXT_C,BorderSizePixel=0,
+                BackgroundColor3=C.TOG_KNOB_OFF,BorderSizePixel=0,
             },pill); corner(knob,8)
 
             local function setState(val,silent)
                 enabled=val
                 if flag then flags[flag]=val; if not silent then saveConfig() end end
                 if val then
-                    tw(pill,FAST,{BackgroundColor3=C.ON_PILL})
-                    tw(knob,FAST,{Position=UDim2.new(0,21,0.5,-8),BackgroundColor3=C.ON})
+                    tw(pill,FAST,{BackgroundColor3=C.TOG_ON_BG})
+                    tw(knob,FAST,{Position=UDim2.new(0,21,0.5,-8),BackgroundColor3=C.TOG_ON})
                     tw(lbl,FAST,{TextColor3=C.TXT_A})
                     tw(stripe,FAST,{BackgroundTransparency=0})
-                    tw(rs,FAST,{Color=C.ACCENT_DIM,Transparency=0})
-                    tw(row,FAST,{BackgroundColor3=C.SIDEBAR_TINT,BackgroundTransparency=T.SURFACE-0.1})
+                    tw(rs,FAST,{Color=C.ACCENT,Transparency=0.2})
+                    tw(row,FAST,{BackgroundColor3=C.NAVY,BackgroundTransparency=T.SURF-0.08})
                 else
-                    tw(pill,FAST,{BackgroundColor3=C.OFF_PILL})
-                    tw(knob,FAST,{Position=UDim2.new(0,3,0.5,-8),BackgroundColor3=C.TXT_C})
+                    tw(pill,FAST,{BackgroundColor3=C.TOG_OFF_BG})
+                    tw(knob,FAST,{Position=UDim2.new(0,3,0.5,-8),BackgroundColor3=C.TOG_KNOB_OFF})
                     tw(lbl,FAST,{TextColor3=C.TXT_B})
                     tw(stripe,FAST,{BackgroundTransparency=1})
                     tw(rs,FAST,{Color=C.BORDER,Transparency=0.5})
-                    tw(row,FAST,{BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=T.SURFACE})
+                    tw(row,FAST,{BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF})
                 end
                 if not silent and cfg.Callback then cfg.Callback(val) end
             end
@@ -796,57 +756,53 @@ function DevNgg:CreateWindow(config)
                 if not enabled then tw(row,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.25}) end
             end)
             row.MouseLeave:Connect(function()
-                if not enabled then tw(row,FAST,{BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=T.SURFACE}) end
+                if not enabled then tw(row,FAST,{BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF}) end
             end)
         end
 
-        -- ── Button ───────────────────────────────────
         function Tab:CreateButton(cfg)
             local btn=make("TextButton",{
-                Size=UDim2.new(1,0,0,44),
-                BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=T.SURFACE,
-                BorderSizePixel=0,Text=cfg.Name or "Button",
-                TextColor3=C.TXT_B,TextSize=13,Font=F.HEAD,AutoButtonColor=false,
+                Size=UDim2.new(1,0,0,44),BackgroundColor3=C.DARK,
+                BackgroundTransparency=T.SURF,BorderSizePixel=0,
+                Text=cfg.Name or "Button",TextColor3=C.TXT_B,
+                TextSize=13,Font=F.HEAD,AutoButtonColor=false,
             },content); corner(btn,8)
             local bs=stroke(btn,C.BORDER,1,0.5)
-
             btn.MouseButton1Click:Connect(function()
                 tw(btn,FAST,{BackgroundColor3=C.ACT,BackgroundTransparency=0.1,TextColor3=C.TXT_A})
-                tw(bs,FAST,{Color=C.BORDER_FOCUS,Transparency=0})
+                tw(bs,FAST,{Color=C.BORDER_FOC,Transparency=0})
                 task.delay(0.14,function()
-                    tw(btn,MED,{BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=T.SURFACE,TextColor3=C.TXT_B})
+                    tw(btn,MED,{BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF,TextColor3=C.TXT_B})
                     tw(bs,MED,{Color=C.BORDER,Transparency=0.5})
                 end)
                 if cfg.Callback then pcall(cfg.Callback) end
             end)
             btn.MouseEnter:Connect(function()
                 tw(btn,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.2,TextColor3=C.TXT_A})
-                tw(bs,FAST,{Color=C.BORDER_FOCUS,Transparency=0})
+                tw(bs,FAST,{Color=C.BORDER_FOC,Transparency=0})
             end)
             btn.MouseLeave:Connect(function()
-                tw(btn,FAST,{BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=T.SURFACE,TextColor3=C.TXT_B})
+                tw(btn,FAST,{BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF,TextColor3=C.TXT_B})
                 tw(bs,MED,{Color=C.BORDER,Transparency=0.5})
             end)
         end
 
-        -- ── TextInput ────────────────────────────────
         function Tab:CreateTextInput(cfg)
             local w=make("Frame",{Size=UDim2.new(1,0,0,64),BackgroundTransparency=1,BorderSizePixel=0},content)
             make("TextLabel",{
                 Size=UDim2.new(1,0,0,16),Position=UDim2.new(0,2,0,0),
-                BackgroundTransparency=1,Text=cfg.Name or "Input",
-                TextColor3=C.TXT_B,TextSize=11,Font=F.HEAD,
-                TextXAlignment=Enum.TextXAlignment.Left,
+                BackgroundTransparency=1,Text=cfg.Name or "Input",TextColor3=C.TXT_B,
+                TextSize=11,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Left,
             },w)
             local box=make("TextBox",{
                 Size=UDim2.new(1,0,0,40),Position=UDim2.new(0,0,0,20),
-                BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=T.SURFACE,BorderSizePixel=0,
+                BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF,BorderSizePixel=0,
                 Text=cfg.Default or "",PlaceholderText=cfg.Placeholder or "Type here...",
                 TextColor3=C.TXT_A,PlaceholderColor3=C.TXT_C,
                 TextSize=13,Font=F.BODY,ClearTextOnFocus=false,
             },w); corner(box,8)
             local bs=stroke(box,C.BORDER,1,0.5); pad(box,0,0,12,12)
-            box.Focused:Connect(function()   tw(bs,FAST,{Color=C.BORDER_FOCUS,Transparency=0}) end)
+            box.Focused:Connect(function()   tw(bs,FAST,{Color=C.BORDER_FOC,Transparency=0}) end)
             box.FocusLost:Connect(function()
                 tw(bs,FAST,{Color=C.BORDER,Transparency=0.5})
                 if cfg.Callback then cfg.Callback(box.Text) end
@@ -858,7 +814,6 @@ function DevNgg:CreateWindow(config)
             return I
         end
 
-        -- ── Slider ───────────────────────────────────
         function Tab:CreateSlider(cfg)
             local flag=cfg.Flag; local mn=cfg.Min or 0; local mx=cfg.Max or 100
             local inc=cfg.Increment or 1; local sfx=cfg.Suffix or ""
@@ -866,16 +821,16 @@ function DevNgg:CreateWindow(config)
             local drag=false; local dc=nil
 
             local w=make("Frame",{
-                Size=UDim2.new(1,0,0,60),
-                BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=T.SURFACE,BorderSizePixel=0,
+                Size=UDim2.new(1,0,0,60),BackgroundColor3=C.DARK,
+                BackgroundTransparency=T.SURF,BorderSizePixel=0,
             },content); corner(w,8); local ws=stroke(w,C.BORDER,1,0.5)
 
             make("TextLabel",{
                 Size=UDim2.new(1,-82,0,20),Position=UDim2.new(0,12,0,8),
-                BackgroundTransparency=1,Text=cfg.Name or "Slider",
-                TextColor3=C.TXT_B,TextSize=13,Font=F.BODY,TextXAlignment=Enum.TextXAlignment.Left,
+                BackgroundTransparency=1,Text=cfg.Name or "Slider",TextColor3=C.TXT_B,
+                TextSize=13,Font=F.BODY,TextXAlignment=Enum.TextXAlignment.Left,
             },w)
-            local vLbl=make("TextLabel",{
+            local vL=make("TextLabel",{
                 Size=UDim2.new(0,70,0,20),Position=UDim2.new(1,-80,0,8),
                 BackgroundTransparency=1,TextColor3=C.ACCENT,
                 TextSize=13,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Right,
@@ -896,17 +851,17 @@ function DevNgg:CreateWindow(config)
 
             local function setV(v,silent)
                 local q=math.floor(v/inc+0.5)*inc
-                local c=math.clamp(math.floor(q*1e7+0.5)/1e7,mn,mx)
-                if c==val then return end; val=c
+                local c2=math.clamp(math.floor(q*1e7+0.5)/1e7,mn,mx)
+                if c2==val then return end; val=c2
                 local r=(val-mn)/(mx-mn)
                 tw(fi,FAST,{Size=UDim2.new(r,0,1,0)}); tw(kn,FAST,{Position=UDim2.new(r,0,0.5,0)})
-                vLbl.Text=tostring(val)..sfx
+                vL.Text=tostring(val)..sfx
                 if flag then flags[flag]=val; if not silent then saveConfig() end end
                 if not silent and cfg.Callback then cfg.Callback(val) end
             end
 
             int.MouseButton1Down:Connect(function()
-                drag=true; tw(ws,FAST,{Color=C.BORDER_FOCUS,Transparency=0})
+                drag=true; tw(ws,FAST,{Color=C.BORDER_FOC,Transparency=0})
                 if dc then dc:Disconnect() end
                 dc=RunService.Heartbeat:Connect(function()
                     if drag then
@@ -921,17 +876,16 @@ function DevNgg:CreateWindow(config)
             end)
             int.MouseEnter:Connect(function() tw(w,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.2}) end)
             int.MouseLeave:Connect(function()
-                if not drag then tw(w,FAST,{BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=T.SURFACE}) end
+                if not drag then tw(w,FAST,{BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF}) end
             end)
 
             local ir=(val-mn)/(mx-mn)
             fi.Size=UDim2.new(ir,0,1,0); kn.Position=UDim2.new(ir,0,0.5,0)
-            vLbl.Text=tostring(val)..sfx; if flag then flags[flag]=val end
+            vL.Text=tostring(val)..sfx; if flag then flags[flag]=val end
 
             local Sl={}; function Sl:Set(v,s) setV(v,s) end; function Sl:Get() return val end; return Sl
         end
 
-        -- ── Keybind ──────────────────────────────────
         function Tab:CreateKeybind(cfg)
             local flag=cfg.Flag; local ck=cfg.Default or Enum.KeyCode.Unknown
             local listening=false; local hc=nil
@@ -939,53 +893,52 @@ function DevNgg:CreateWindow(config)
             if cfg.Blacklist then for _,k in ipairs(cfg.Blacklist) do bl[k]=true end end
 
             local w=make("Frame",{
-                Size=UDim2.new(1,0,0,48),
-                BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=T.SURFACE,BorderSizePixel=0,
+                Size=UDim2.new(1,0,0,48),BackgroundColor3=C.DARK,
+                BackgroundTransparency=T.SURF,BorderSizePixel=0,
             },content); corner(w,8); local ws=stroke(w,C.BORDER,1,0.5)
 
             make("TextLabel",{
                 Size=UDim2.new(1,-112,1,0),Position=UDim2.new(0,12,0,0),
-                BackgroundTransparency=1,Text=cfg.Name or "Keybind",
-                TextColor3=C.TXT_B,TextSize=13,Font=F.BODY,TextXAlignment=Enum.TextXAlignment.Left,
+                BackgroundTransparency=1,Text=cfg.Name or "Keybind",TextColor3=C.TXT_B,
+                TextSize=13,Font=F.BODY,TextXAlignment=Enum.TextXAlignment.Left,
             },w)
 
             local bdg=make("Frame",{
                 Size=UDim2.new(0,88,0,28),Position=UDim2.new(1,-100,0.5,-14),
-                BackgroundColor3=C.SIDEBAR_TINT,BackgroundTransparency=0.35,BorderSizePixel=0,
-            },w); corner(bdg,6)
-            local bs=stroke(bdg,C.BORDER,1,0.4)
+                BackgroundColor3=C.NAVY,BackgroundTransparency=0.35,BorderSizePixel=0,
+            },w); corner(bdg,6); local bs=stroke(bdg,C.BORDER,1,0.4)
 
             local kLbl=make("TextLabel",{
-                Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,
-                TextColor3=C.TXT_B,TextSize=11,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Center,
+                Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,TextColor3=C.TXT_B,
+                TextSize=11,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Center,
             },bdg)
 
             local int=make("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",ZIndex=5},w)
 
-            local function kn2(kc)
+            local function kname(kc)
                 if kc==Enum.KeyCode.Unknown then return "None" end
                 local s2=tostring(kc); local d2=s2:find("%.[^%.]*$"); return d2 and s2:sub(d2+1) or s2
             end
             local function sk(kc,silent)
-                ck=kc; kLbl.Text=kn2(kc)
-                if flag then flags[flag]=kn2(kc); if not silent then saveConfig() end end
+                ck=kc; kLbl.Text=kname(kc)
+                if flag then flags[flag]=kname(kc); if not silent then saveConfig() end end
                 if not silent and cfg.Callback then cfg.Callback(kc) end
             end
             local function stopL()
-                listening=false; kLbl.Text=kn2(ck)
-                tw(bs,FAST,{Color=C.BORDER,Transparency=0.4}); tw(bdg,FAST,{BackgroundColor3=C.SIDEBAR_TINT,BackgroundTransparency=0.35})
-                tw(ws,FAST,{Color=C.BORDER,Transparency=0.5}); tw(w,FAST,{BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=T.SURFACE})
+                listening=false; kLbl.Text=kname(ck)
+                tw(bs,FAST,{Color=C.BORDER,Transparency=0.4}); tw(bdg,FAST,{BackgroundColor3=C.NAVY,BackgroundTransparency=0.35})
+                tw(ws,FAST,{Color=C.BORDER,Transparency=0.5}); tw(w,FAST,{BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF})
             end
             local function startL()
                 listening=true; kLbl.Text="..."
-                tw(bs,FAST,{Color=C.BORDER_FOCUS,Transparency=0}); tw(bdg,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.2})
-                tw(ws,FAST,{Color=C.BORDER_FOCUS,Transparency=0})
+                tw(bs,FAST,{Color=C.BORDER_FOC,Transparency=0}); tw(bdg,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.2})
+                tw(ws,FAST,{Color=C.BORDER_FOC,Transparency=0})
             end
 
             int.MouseButton1Click:Connect(function() if listening then stopL() else startL() end end)
             int.MouseEnter:Connect(function() tw(w,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.2}) end)
             int.MouseLeave:Connect(function()
-                if not listening then tw(w,FAST,{BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=T.SURFACE}) end
+                if not listening then tw(w,FAST,{BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF}) end
             end)
 
             UserInputService.InputBegan:Connect(function(input,gpe)
@@ -1006,19 +959,18 @@ function DevNgg:CreateWindow(config)
             local KB={}; function KB:Set(kc,s) sk(kc,s) end; function KB:Get() return ck end; return KB
         end
 
-        -- ── Dropdown ─────────────────────────────────
         function Tab:CreateDropdown(cfg)
             local options=cfg.Options or {}; local selected=cfg.Default or ""; local isOpen=false
 
             local w=make("Frame",{Size=UDim2.new(1,0,0,64),BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=false},content)
             make("TextLabel",{
                 Size=UDim2.new(1,0,0,16),Position=UDim2.new(0,2,0,0),
-                BackgroundTransparency=1,Text=cfg.Name or "Dropdown",
-                TextColor3=C.TXT_B,TextSize=11,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Left,
+                BackgroundTransparency=1,Text=cfg.Name or "Dropdown",TextColor3=C.TXT_B,
+                TextSize=11,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Left,
             },w)
             local btn=make("TextButton",{
                 Size=UDim2.new(1,0,0,40),Position=UDim2.new(0,0,0,20),
-                BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=T.SURFACE,BorderSizePixel=0,
+                BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF,BorderSizePixel=0,
                 Text=selected~="" and selected or "Select...",
                 TextColor3=selected~="" and C.TXT_A or C.TXT_C,
                 TextSize=12,Font=F.BODY,AutoButtonColor=false,TextXAlignment=Enum.TextXAlignment.Left,
@@ -1030,9 +982,9 @@ function DevNgg:CreateWindow(config)
             },btn)
 
             local dl=make("Frame",{
-                BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=0.15,
+                BackgroundColor3=C.DARK,BackgroundTransparency=0.18,
                 BorderSizePixel=0,Visible=false,ZIndex=60,
-            },screenGui); corner(dl,8); stroke(dl,C.BORDER_FOCUS,1,0.3)
+            },sg); corner(dl,8); stroke(dl,C.BORDER_FOC,1,0.3)
 
             local dsf=make("ScrollingFrame",{
                 Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,BorderSizePixel=0,
@@ -1046,7 +998,7 @@ function DevNgg:CreateWindow(config)
             local function close2()
                 if not isOpen then return end; isOpen=false; dl.Visible=false
                 tw(bs,FAST,{Color=C.BORDER,Transparency=0.5})
-                tw(btn,FAST,{BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=T.SURFACE})
+                tw(btn,FAST,{BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF})
                 arrow.Text="▾"; unregisterDropdown(close2)
             end
             local function refresh2()
@@ -1064,7 +1016,7 @@ function DevNgg:CreateWindow(config)
                         local sel=opt==selected
                         local item=make("TextButton",{
                             Size=UDim2.new(1,0,0,36),
-                            BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=0.12,BorderSizePixel=0,
+                            BackgroundColor3=C.DARK,BackgroundTransparency=0.12,BorderSizePixel=0,
                             Text="  "..opt,TextColor3=sel and C.TXT_A or C.TXT_B,
                             TextSize=12,Font=sel and F.HEAD or F.BODY,
                             AutoButtonColor=false,TextXAlignment=Enum.TextXAlignment.Left,
@@ -1080,7 +1032,7 @@ function DevNgg:CreateWindow(config)
                             tw(item,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.1,TextColor3=C.TXT_A})
                         end)
                         item.MouseLeave:Connect(function()
-                            tw(item,FAST,{BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=0.12,TextColor3=sel and C.TXT_A or C.TXT_B})
+                            tw(item,FAST,{BackgroundColor3=C.DARK,BackgroundTransparency=0.12,TextColor3=sel and C.TXT_A or C.TXT_B})
                         end)
                         item.MouseButton1Click:Connect(function()
                             selected=opt; btn.Text=opt; btn.TextColor3=C.TXT_A; close2()
@@ -1097,13 +1049,13 @@ function DevNgg:CreateWindow(config)
                 local ap=btn.AbsolutePosition; local as=btn.AbsoluteSize
                 dl.Size=UDim2.new(0,as.X,0,math.min(math.max(#options,1)*36+8,200))
                 dl.Position=UDim2.new(0,ap.X,0,ap.Y+as.Y+4); dl.Visible=true
-                tw(bs,FAST,{Color=C.BORDER_FOCUS,Transparency=0})
+                tw(bs,FAST,{Color=C.BORDER_FOC,Transparency=0})
                 tw(btn,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.2})
                 arrow.Text="▴"
             end)
             btn.MouseEnter:Connect(function() tw(btn,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.2}) end)
             btn.MouseLeave:Connect(function()
-                if not isOpen then tw(btn,FAST,{BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=T.SURFACE}) end
+                if not isOpen then tw(btn,FAST,{BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF}) end
             end)
 
             function DD:SetOptions(o)
@@ -1120,7 +1072,7 @@ function DevNgg:CreateWindow(config)
                 for i,v in ipairs(options) do
                     if v==o then
                         table.remove(options,i)
-                        if selected==o then selected=""; btn.Text="Select..."; btn.TextColor3=C.TXT_C end
+                        if selected==o then selected="";btn.Text="Select...";btn.TextColor3=C.TXT_C end
                         if isOpen then refresh2() end; return
                     end
                 end
@@ -1135,24 +1087,22 @@ function DevNgg:CreateWindow(config)
             return DD
         end
 
-        -- ── ColorPicker ──────────────────────────────
         function Tab:CreateColorPicker(cfg)
             local flag=cfg.Flag; local color=cfg.Default or Color3.fromRGB(168,207,255)
             local h,s,v=color:ToHSV(); local isOpen=false
 
             local row=make("TextButton",{
-                Size=UDim2.new(1,0,0,48),
-                BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=T.SURFACE,
-                BorderSizePixel=0,Text="",AutoButtonColor=false,
+                Size=UDim2.new(1,0,0,48),BackgroundColor3=C.DARK,
+                BackgroundTransparency=T.SURF,BorderSizePixel=0,Text="",AutoButtonColor=false,
             },content); corner(row,8); local rs=stroke(row,C.BORDER,1,0.5)
 
             make("TextLabel",{
                 Size=UDim2.new(1,-72,1,0),Position=UDim2.new(0,12,0,0),
-                BackgroundTransparency=1,Text=cfg.Name or "Color",
-                TextColor3=C.TXT_B,TextSize=13,Font=F.BODY,TextXAlignment=Enum.TextXAlignment.Left,
+                BackgroundTransparency=1,Text=cfg.Name or "Color",TextColor3=C.TXT_B,
+                TextSize=13,Font=F.BODY,TextXAlignment=Enum.TextXAlignment.Left,
             },row)
             local sw=make("Frame",{
-                Size=UDim2.new(0,30,0,18),Position=UDim2.new(1,-52,0.5,-9),
+                Size=UDim2.new(0,28,0,16),Position=UDim2.new(1,-50,0.5,-8),
                 BackgroundColor3=color,BorderSizePixel=0,
             },row); corner(sw,5); stroke(sw,C.BORDER,1,0.4)
             make("TextLabel",{
@@ -1161,9 +1111,8 @@ function DevNgg:CreateWindow(config)
             },row)
 
             local panel=make("Frame",{
-                Size=UDim2.new(1,0,0,174),
-                BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=T.SURFACE,
-                BorderSizePixel=0,Visible=false,
+                Size=UDim2.new(1,0,0,174),BackgroundColor3=C.DARK,
+                BackgroundTransparency=T.SURF,BorderSizePixel=0,Visible=false,
             },content); corner(panel,8); stroke(panel,C.BORDER,1,0.5); pad(panel,9,9,9,9)
 
             local svB=make("Frame",{Size=UDim2.new(1,-28,1,-38),BackgroundColor3=Color3.fromHSV(h,1,1),BorderSizePixel=0},panel)
@@ -1202,7 +1151,7 @@ function DevNgg:CreateWindow(config)
 
             local hx=make("TextBox",{
                 Size=UDim2.new(1,0,0,26),Position=UDim2.new(0,0,1,-26),
-                BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=T.SURFACE,BorderSizePixel=0,
+                BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF,BorderSizePixel=0,
                 TextColor3=C.TXT_A,PlaceholderColor3=C.TXT_C,PlaceholderText="#RRGGBB",
                 TextSize=12,Font=F.MONO,ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Center,
             },panel); corner(hx,5); local hbs=stroke(hx,C.BORDER,1,0.5)
@@ -1228,7 +1177,8 @@ function DevNgg:CreateWindow(config)
             end)
             RunService.Heartbeat:Connect(function()
                 if not svD then return end
-                local m=UserInputService:GetMouseLocation(); local a=svB.AbsolutePosition; local sz=svB.AbsoluteSize
+                local m=UserInputService:GetMouseLocation()
+                local a=svB.AbsolutePosition; local sz=svB.AbsoluteSize
                 s=math.clamp((m.X-a.X)/sz.X,0,1); v=1-math.clamp((m.Y-a.Y)/sz.Y,0,1); updAll()
             end)
             local hD=false
@@ -1239,15 +1189,18 @@ function DevNgg:CreateWindow(config)
             end)
             RunService.Heartbeat:Connect(function()
                 if not hD then return end
-                local m=UserInputService:GetMouseLocation(); local a=hB.AbsolutePosition; local sz=hB.AbsoluteSize
+                local m=UserInputService:GetMouseLocation()
+                local a=hB.AbsolutePosition; local sz=hB.AbsoluteSize
                 h=math.clamp((m.Y-a.Y)/sz.Y,0,1); updAll()
             end)
-            hx.Focused:Connect(function()  tw(hbs,FAST,{Color=C.BORDER_FOCUS,Transparency=0}) end)
+            hx.Focused:Connect(function()  tw(hbs,FAST,{Color=C.BORDER_FOC,Transparency=0}) end)
             hx.FocusLost:Connect(function()
                 tw(hbs,FAST,{Color=C.BORDER,Transparency=0.5})
                 local t2=hx.Text:gsub("#","")
                 if #t2==6 then
-                    local r2=tonumber(t2:sub(1,2),16); local g2=tonumber(t2:sub(3,4),16); local b2=tonumber(t2:sub(5,6),16)
+                    local r2=tonumber(t2:sub(1,2),16)
+                    local g2=tonumber(t2:sub(3,4),16)
+                    local b2=tonumber(t2:sub(5,6),16)
                     if r2 and g2 and b2 then h,s,v=Color3.fromRGB(r2,g2,b2):ToHSV(); updAll() end
                 end
             end)
@@ -1255,12 +1208,18 @@ function DevNgg:CreateWindow(config)
                 isOpen=not isOpen; panel.Visible=isOpen
                 local chv=row:FindFirstChild("TextLabel",true)
                 if chv and chv.Text~=cfg.Name and chv.Text~="" then chv.Text=isOpen and "▴" or "▾" end
-                if isOpen then updAll(); tw(rs,FAST,{Color=C.BORDER_FOCUS,Transparency=0}); tw(row,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.2})
-                else tw(rs,FAST,{Color=C.BORDER,Transparency=0.5}); tw(row,FAST,{BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=T.SURFACE}) end
+                if isOpen then
+                    updAll()
+                    tw(rs,FAST,{Color=C.BORDER_FOC,Transparency=0})
+                    tw(row,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.2})
+                else
+                    tw(rs,FAST,{Color=C.BORDER,Transparency=0.5})
+                    tw(row,FAST,{BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF})
+                end
             end)
             row.MouseEnter:Connect(function() tw(row,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.2}) end)
             row.MouseLeave:Connect(function()
-                if not isOpen then tw(row,FAST,{BackgroundColor3=C.SURFACE_TINT,BackgroundTransparency=T.SURFACE}) end
+                if not isOpen then tw(row,FAST,{BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF}) end
             end)
             updAll()
             local CP={}
@@ -1275,7 +1234,7 @@ function DevNgg:CreateWindow(config)
         return Tab
     end
 
-    -- ── Window helpers ─────────────────────────────
+    -- ── Window helpers ─────────────────────────────────────────
     function Window:GetFlag(flag)    return flags[flag] end
     function Window:SetToggle(flag,value)
         local setter=toggleSetters[flag]; if setter then setter(value,false) end
