@@ -342,17 +342,23 @@ function DevNgg:CreateWindow(config)
         BorderSizePixel=0,ZIndex=3,ClipsDescendants=true,
     },main); corner(side,12)
 
-    -- Square ONLY the right edge of sidebar (cover right corners with flat frame)
+    -- Cover sidebar's top-right and bottom-right rounded corners
+    -- These are SIBLINGS on main so ClipsDescendants doesn't affect them
     make("Frame",{
-        Size=UDim2.new(0,13,1,0),Position=UDim2.new(1,-13,0,0),
+        Size=UDim2.new(0,12,0,12),Position=UDim2.new(0,SW-12,0,0),
         BackgroundColor3=C.NAVY,BackgroundTransparency=T.SIDE,
-        BorderSizePixel=0,ZIndex=4,
-    },side)
-    -- Right divider
+        BorderSizePixel=0,ZIndex=5,
+    },main)
     make("Frame",{
-        Size=UDim2.new(0,1,1,0),Position=UDim2.new(1,-1,0,0),
-        BackgroundColor3=C.BORDER,BackgroundTransparency=0.6,BorderSizePixel=0,ZIndex=5,
-    },side)
+        Size=UDim2.new(0,12,0,12),Position=UDim2.new(0,SW-12,1,-12),
+        BackgroundColor3=C.NAVY,BackgroundTransparency=T.SIDE,
+        BorderSizePixel=0,ZIndex=5,
+    },main)
+    -- Right divider line
+    make("Frame",{
+        Size=UDim2.new(0,1,1,0),Position=UDim2.new(0,SW,0,0),
+        BackgroundColor3=C.BORDER,BackgroundTransparency=0.4,BorderSizePixel=0,ZIndex=6,
+    },main)
 
     -- Sidebar header (drag handle)
     local sHdr=make("Frame",{
@@ -404,11 +410,19 @@ function DevNgg:CreateWindow(config)
         BackgroundColor3=C.DARK,BackgroundTransparency=T.CONT,
         BorderSizePixel=0,ClipsDescendants=true,
     },main); corner(cPanel,12)
-    -- Square ONLY the left edge of content panel
+
+    -- Cover content panel's top-left and bottom-left rounded corners
+    -- Placed on main (sibling), matching DARK color
     make("Frame",{
-        Size=UDim2.new(0,13,1,0),BackgroundColor3=C.DARK,
-        BackgroundTransparency=T.CONT,BorderSizePixel=0,ZIndex=2,
-    },cPanel)
+        Size=UDim2.new(0,12,0,12),Position=UDim2.new(0,SW,0,0),
+        BackgroundColor3=C.DARK,BackgroundTransparency=T.CONT,
+        BorderSizePixel=0,ZIndex=5,
+    },main)
+    make("Frame",{
+        Size=UDim2.new(0,12,0,12),Position=UDim2.new(0,SW,1,-12),
+        BackgroundColor3=C.DARK,BackgroundTransparency=T.CONT,
+        BorderSizePixel=0,ZIndex=5,
+    },main)
 
     -- Content header
     local cHdr=make("Frame",{
