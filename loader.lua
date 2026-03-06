@@ -262,8 +262,8 @@ end
 -- ══════════════════════════════════════════════════════════════
 function DevNgg:CreateWindow(config)
     local winTitle  = config.Name              or "DevN.gg"
-    local winSub    = config.Subtitle          or "by DevN.gg"
-    local winVer    = config.Version           or "v1.0"
+    local winSub    = (config.Subtitle ~= nil) and config.Subtitle or "by DevN.gg"
+    local winVer    = (config.Version ~= nil) and config.Version or "v1.0"
     local toggleKey = config.ToggleUIKeybind   or "K"
     local loadTitle = config.LoadingTitle      or winTitle
     local loadSub   = config.LoadingSubtitle   or "Loading..."
