@@ -173,24 +173,10 @@ local mainFrame  = nil
 local guiVisible = true
 local DevNgg     = {}
 
--- ══════════════════════════════════════════════════════════════
--- BLUR OVERLAY
--- We use a ScreenGui overlay instead of Lighting:BlurEffect so
--- the actual game world is NEVER affected. The frosted-glass look
--- comes from the overlay + the semi-transparent panel colours.
--- ══════════════════════════════════════════════════════════════
-local blurOverlayGui  = nil   -- set inside CreateWindow
-local blurOverlayFrame= nil   -- the dark tinted full-screen frame
+-- setBlur is a no-op: no Lighting effect, no overlay.
+-- Frosted-glass look comes purely from panel BackgroundTransparency values.
+local function setBlur(_on) end
 
-local function setBlur(on)
-    pcall(function()
-        if blurOverlayFrame then
-            tw(blurOverlayFrame,
-               TweenInfo.new(0.25,Enum.EasingStyle.Quint),
-               {BackgroundTransparency = on and 0.55 or 1})
-        end
-    end)
-end
 
 function DevNgg:SetVisibility(val)
     guiVisible=val
@@ -200,7 +186,6 @@ function DevNgg:SetVisibility(val)
 end
 function DevNgg:IsVisible() return guiVisible end
 function DevNgg:Destroy()
-    pcall(function() if blurOverlayGui then blurOverlayGui:Destroy() end end)
     pcall(function() if mainFrame and mainFrame.Parent then mainFrame.Parent:Destroy() end end)
 end
 
@@ -295,19 +280,6 @@ function DevNgg:CreateWindow(config)
     })
     pcall(function() sg.IgnoreGuiInset=true end)
     safeParent(sg)
-
-    -- ── Blur overlay (replaces Lighting BlurEffect) ───────────
-    -- Full-screen dark tint inside the ScreenGui so the game
-    -- world is NEVER affected. Panels sit on top (ZIndex 3+).
-    blurOverlayGui   = sg
-    blurOverlayFrame = make("Frame",{
-        Name="BlurOverlay",
-        Size=UDim2.new(1,0,1,0),
-        BackgroundColor3=Color3.fromRGB(2,8,28),
-        BackgroundTransparency=1,   -- invisible until setBlur(true)
-        BorderSizePixel=0,
-        ZIndex=1,
-    },sg)
 
     -- ── Loading bar ───────────────────────────────────────────
     -- Shown immediately (no delay), destroyed after ~1.5s
