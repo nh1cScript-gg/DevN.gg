@@ -1,20 +1,18 @@
 loadstring('    function LPH_NO_VIRTUALIZE(f) return f end;\n')()
 
--- ── AUTO RE-EXECUTE ON SERVER HOP ────────────────────────────
--- Uses a global flag so it only sets up the listener ONCE.
--- Every time TeleportService brings you to a new server,
--- the new server re-runs loader automatically.
-local _getgenv = getgenv or function() return shared end
-if not _getgenv().__devngg_autohook then
-    _getgenv().__devngg_autohook = true
-    local _loaderUrl = 'https://raw.githubusercontent.com/nh1cScript-gg/DevN.gg/main/loader.lua'
-    game:GetService("Players").LocalPlayer.OnTeleport:Connect(function(state)
-        if state == Enum.TeleportState.Started then
-            task.wait(4)
-            pcall(function() loadstring(game:HttpGet(_loaderUrl))() end)
-        end
-    end)
+-- ── DUPLICATE PREVENTION ─────────────────────────────────────
+-- If this loader already ran in this server session, stop here.
+-- Prevents double-loading when Xeno auto exec fires multiple times.
+local _genv = getgenv and getgenv() or shared
+if _genv.__devngg_loaded then return end
+_genv.__devngg_loaded = true
+
+-- ── WAIT FOR GAME TO FULLY LOAD ──────────────────────────────
+-- Xeno auto exec fires before the game is ready — wait for it.
+if not game:IsLoaded() then
+    game.Loaded:Wait()
 end
+task.wait(3) -- extra buffer for ReplicatedStorage and remotes to populate
 -- ─────────────────────────────────────────────────────────────
 
 local cloneref = cloneref or function(s) return s end
@@ -69,6 +67,9 @@ local function tryAutoAuth()
         getgenv().script_key = key
         _G.script_key = key
         saveKey(key)
+        -- Reset flag so the next server hop loads fresh
+        local _genv2 = getgenv and getgenv() or shared
+        _genv2.__devngg_loaded = nil
         loadstring(game:HttpGet(SCRIPT_URL))()
         return true
     else
@@ -209,6 +210,8 @@ ckb.MouseButton1Click:Connect(function()
         if r.code=='KEY_VALID' then
             ss('✅ Key valid! Loading '..HUB_NAME..'...',Color3.fromRGB(87,242,135),true)
             getgenv().script_key=k _G.script_key=k saveKey(k)
+            local _genv3 = getgenv and getgenv() or shared
+            _genv3.__devngg_loaded = nil
             task.wait(1.2)
             closeGUI(function()
                 loadstring(game:HttpGet(SCRIPT_URL))()
