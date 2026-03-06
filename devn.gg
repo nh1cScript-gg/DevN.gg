@@ -444,7 +444,7 @@ end
 local function collectAllDragonBalls()
     local balls = getAllDragonBalls()
     if #balls == 0 then
-        DevNgg:Notify({ Title = "Dragon Ball", Content = "No Dragon Balls found.", Duration = 3 })
+        DevNgg:Notify({ Title = "No Dragon Balls Found", Content = "No Dragon Balls on this server.", Duration = 3 })
         if dragonBallAutoHop then task.spawn(serverHop) end
         return false
     end
@@ -456,7 +456,7 @@ local function collectAllDragonBalls()
         end)
     end
     while finished < total do task.wait(0.05) end
-    DevNgg:Notify({ Title = "Collected", Content = total .. " Dragon Ball(s) picked up.", Duration = 4 })
+    DevNgg:Notify({ Title = "Dragon Balls Collected!", Content = total .. " Dragon Ball(s) picked up.", Duration = 4 })
     return true
 end
 
@@ -491,7 +491,7 @@ function serverHop(noCheck)
     if not noCheck then
         for _ = 1, 2 do
             if dragonBallsExist() then
-                DevNgg:Notify({ Title = "Dragon Balls Found", Content = "Cancelling hop.", Duration = 3 })
+                DevNgg:Notify({ Title = "Dragon Balls Found!", Content = "Dragon Balls detected — cancelling server hop.", Duration = 3 })
                 if dragonBallAutoCollect then task.spawn(collectAllDragonBalls) end
                 return
             end
@@ -1055,18 +1055,35 @@ end)
 local function startCollectLoop()
     if collectLoopThread then task.cancel(collectLoopThread) collectLoopThread = nil end
     collectLoopThread = task.spawn(function()
+        -- On first start, wait a moment then collect any balls already on the map
         task.wait(1.5)
+        if dragonBallsExist() then
+            onDragonBallDetected()
+        end
+
         while dragonBallAutoCollect do
-            if not isCollecting and not isHopping then
+            task.wait(3)
+            if not dragonBallAutoCollect then break end
+            if isCollecting or isHopping then continue end
+
+            if dragonBallsExist() then
+                -- Balls exist — collect them
+                onDragonBallDetected()
+            elseif dragonBallAutoHop then
+                -- No balls found — wait a few more seconds before hopping
+                -- in case a ball just spawned and hasn't hit the cache yet
+                task.wait(4)
+                if not dragonBallAutoCollect or isHopping then continue end
+
+                -- Final check before hopping
                 if dragonBallsExist() then
                     onDragonBallDetected()
-                elseif dragonBallAutoHop then
-                    DevNgg:Notify({ Title = " No Balls Found", Content = "Hopping server...", Duration = 2 })
+                else
+                    DevNgg:Notify({ Title = "No Dragon Balls Found", Content = "No Dragon Balls on this server — hopping...", Duration = 2 })
                     serverHop()
                     task.wait(8)
                 end
             end
-            task.wait(3)
         end
     end)
 end
@@ -1132,7 +1149,7 @@ DragonBallTab:CreateToggle({
 })
 
 DragonBallTab:CreateToggle({
-    Name         = " Auto Server Hop (No Balls)",
+    Name         = "Auto Server Hop (No Dragon Balls)",
     CurrentValue = false,
     Flag         = "AutoHop",
     Callback     = function(enabled)
@@ -1987,6 +2004,8 @@ AntiAfkTab:CreateButton({
 -- ══════════════════════════════════════════════════════════════
 -- SECTION 23: DRAGON BALL REMOVAL LISTENER
 -- Uses cache instead of scanning — zero freeze
+-- Waits 5 seconds after last ball disappears before hopping,
+-- so newly spawning balls are never missed.
 -- ══════════════════════════════════════════════════════════════
 local hopCooldownActive = false
 
@@ -1994,9 +2013,18 @@ workspace.DescendantRemoving:Connect(function(obj)
     if not dragonBallAutoHop or hopCooldownActive then return end
     if not dragonBallCache[obj] then return end
     hopCooldownActive = true
-    task.delay(0.5, function()
-        if not dragonBallsExist() then
-            DevNgg:Notify({ Title = " All Balls Gone!", Content = "Hopping to next server...", Duration = 3 })
+    task.delay(5, function()  -- wait 5s — new ball might be about to spawn
+        if not dragonBallAutoHop then
+            hopCooldownActive = false
+            return
+        end
+        if dragonBallsExist() then
+            -- A ball spawned while we were waiting — collect it instead of hopping
+            if dragonBallAutoCollect then
+                onDragonBallDetected()
+            end
+        else
+            DevNgg:Notify({ Title = "All Dragon Balls Collected!", Content = "No more Dragon Balls — hopping to next server...", Duration = 3 })
             task.spawn(serverHop)
         end
         hopCooldownActive = false
