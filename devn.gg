@@ -4,6 +4,27 @@
 -- ║           by Dev N                                           ║
 -- ╚══════════════════════════════════════════════════════════════╝
 
+-- ── WAIT FOR GAME TO FULLY LOAD ──────────────────────────────
+-- Prevents "attempt to index nil with WaitForChild" on fast servers
+if not game:IsLoaded() then game.Loaded:Wait() end
+
+-- Wait for ReplicatedStorage.Events to exist before doing anything
+local _RS = game:GetService("ReplicatedStorage")
+local _ok = false
+for _ = 1, 30 do  -- try for up to 15 seconds
+    if _RS:FindFirstChild("Events") then
+        _ok = true
+        break
+    end
+    task.wait(0.5)
+end
+if not _ok then
+    warn("[DevN.GG] Events folder not found after 15s — aborting.")
+    return
+end
+task.wait(1) -- small extra buffer
+-- ─────────────────────────────────────────────────────────────
+
 -- ══════════════════════════════════════════════════════════════
 -- SECTION 1: LOAD UI LIBRARY
 -- ══════════════════════════════════════════════════════════════
@@ -380,10 +401,19 @@ end
 local dragonBallCache = {}
 
 local function isDragonBall(obj)
-    return obj:IsA("Part")
-        and obj.Name:match("^DragonBall%d$")
-        and obj:FindFirstChild("Attachment")
-        and not obj:IsDescendantOf(ReplicatedStorage)
+    if not obj:IsA("Part") then return false end
+    if not obj.Name:match("^DragonBall%d$") then return false end
+    if not obj:FindFirstChild("Attachment") then return false end
+    if obj:IsDescendantOf(ReplicatedStorage) then return false end
+    -- Ignore balls inside ShenronSpawner (circling/summoning animation)
+    local p = obj.Parent
+    while p and p ~= workspace do
+        if p.Name == "ShenronSpawner" then return false end
+        p = p.Parent
+    end
+    -- Ignore fading/claimed balls (Transparency >= 0.9)
+    if obj.Transparency >= 0.9 then return false end
+    return true
 end
 
 -- Passively watch workspace — instant, no scanning
@@ -451,12 +481,32 @@ local function collectAllDragonBalls()
     local finished, total = 0, #balls
     for _, ball in ipairs(balls) do
         task.spawn(function()
-            collectDragonBall(ball)
+            local attempts = 0
+            local prevPos = ball.Parent and ball.Position or nil
+            repeat
+                collectDragonBall(ball)
+                attempts += 1
+                task.wait(0.4)
+                -- If ball hasn't moved after 3 attempts, it's bugged — purge and skip
+                if ball.Parent then
+                    local newPos = ball.Position
+                    if prevPos and (newPos - prevPos).Magnitude < 1 and attempts >= 3 then
+                        dragonBallCache[ball] = nil
+                        break
+                    end
+                    prevPos = newPos
+                end
+            until not ball.Parent or not dragonBallCache[ball] or attempts >= 5
             finished += 1
         end)
     end
-    while finished < total do task.wait(0.05) end
-    DevNgg:Notify({ Title = "Dragon Balls Collected!", Content = total .. " Dragon Ball(s) picked up.", Duration = 4 })
+    -- Hard timeout so the system never hangs forever on bugged balls
+    local timeout = 0
+    while finished < total and timeout < 8 do
+        task.wait(0.1)
+        timeout += 0.1
+    end
+    DevNgg:Notify({ Title = "Dragon Balls Collected!", Content = total .. " Dragon Ball(s) processed.", Duration = 4 })
     return true
 end
 
