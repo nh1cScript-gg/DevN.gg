@@ -50,6 +50,26 @@ local wishLoopThread    = nil
 -- Wish  (Mega Sparking only — list of targets, picks first found)
 local wishTargets    = {}   -- list of bare character names e.g. {"Zoono","Gojo"}
 local wishListDropdown = nil  -- UI ref, assigned after tab is built
+
+-- Auto-save wish targets to a dedicated file instantly when list changes
+local WISH_FILE = "AniPixels/WishTargets.json"
+local function saveWishTargets()
+    pcall(function()
+        if not isfolder("AniPixels") then makefolder("AniPixels") end
+        writefile(WISH_FILE, HttpService:JSONEncode({ targets = wishTargets }))
+    end)
+end
+local function loadWishTargets()
+    pcall(function()
+        if isfile and isfile(WISH_FILE) then
+            local data = HttpService:JSONDecode(readfile(WISH_FILE))
+            if data and type(data.targets) == "table" then
+                wishTargets = data.targets
+            end
+        end
+    end)
+end
+
 local function refreshWishDropdown()
     if wishListDropdown then
         local opts = #wishTargets > 0 and wishTargets or {"(empty)"}
@@ -1226,6 +1246,7 @@ WishTab:CreateButton({
         end
         table.insert(wishTargets, name)
         refreshWishDropdown()
+        saveWishTargets()
         DevNgg:Notify({ Title = "✅ Added", Content = "Mega Sparking " .. name, Duration = 2 })
     end,
 })
@@ -1258,6 +1279,7 @@ WishTab:CreateButton({
             end
         end
         refreshWishDropdown()
+        saveWishTargets()
         DevNgg:Notify({ Title = "🗑 Removed", Content = sel, Duration = 2 })
     end,
 })
@@ -1267,6 +1289,7 @@ WishTab:CreateButton({
     Callback = function()
         wishTargets = {}
         refreshWishDropdown()
+        saveWishTargets()
         DevNgg:Notify({ Title = "List Cleared", Content = "All wish targets removed.", Duration = 2 })
     end,
 })
@@ -1985,6 +2008,18 @@ end)
 -- Only runs if a config was previously selected manually
 -- ══════════════════════════════════════════════════════════════
 task.wait(1) -- wait for UI to fully initialize
+
+-- Always load wish targets from dedicated file first (survives server hops)
+loadWishTargets()
+refreshWishDropdown()
+if #wishTargets > 0 then
+    DevNgg:Notify({
+        Title   = "Wish Targets Restored!",
+        Content = #wishTargets .. " unit(s) loaded. Auto Wish ready.",
+        Duration = 4,
+    })
+end
+
 pcall(function()
     if not isfile("AniPixels/LastConfig.json") then return end
     local meta = HttpService:JSONDecode(readfile("AniPixels/LastConfig.json"))
