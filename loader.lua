@@ -109,12 +109,12 @@ local C = {
 
 -- Transparency — HIGH so glass effect is actually visible
 local T = {
-    SIDE   = 0,    -- sidebar      (fully opaque — no game bleed)
-    CONT   = 0,    -- content panel
-    SURF   = 0,    -- cards / rows
-    HDR    = 0,    -- header strips
-    NOTIF  = 0,
-    CTRL   = 0,    -- window control buttons
+    SIDE   = 0.35,  -- sidebar
+    CONT   = 0.40,  -- content panel
+    SURF   = 0.42,  -- cards / rows
+    HDR    = 0.30,  -- header strips
+    NOTIF  = 0.20,
+    CTRL   = 0.45,  -- window control buttons
 }
 
 local FAST = TweenInfo.new(0.10,Enum.EasingStyle.Quint)
@@ -342,10 +342,10 @@ function DevNgg:CreateWindow(config)
         BorderSizePixel=0,ZIndex=3,ClipsDescendants=true,
     },main); corner(side,12)
 
-    -- Square the right edge of sidebar
+    -- Square ONLY the right edge of sidebar (cover right corners with flat frame)
     make("Frame",{
-        Size=UDim2.new(0,12,1,0),Position=UDim2.new(1,-12,0,0),
-        BackgroundColor3=C.NAVY,BackgroundTransparency=0,
+        Size=UDim2.new(0,13,1,0),Position=UDim2.new(1,-13,0,0),
+        BackgroundColor3=C.NAVY,BackgroundTransparency=T.SIDE,
         BorderSizePixel=0,ZIndex=4,
     },side)
     -- Right divider
@@ -404,10 +404,10 @@ function DevNgg:CreateWindow(config)
         BackgroundColor3=C.DARK,BackgroundTransparency=T.CONT,
         BorderSizePixel=0,ClipsDescendants=true,
     },main); corner(cPanel,12)
-    -- Square left edge
+    -- Square ONLY the left edge of content panel
     make("Frame",{
-        Size=UDim2.new(0,12,1,0),BackgroundColor3=C.DARK,
-        BackgroundTransparency=0,BorderSizePixel=0,
+        Size=UDim2.new(0,13,1,0),BackgroundColor3=C.DARK,
+        BackgroundTransparency=T.CONT,BorderSizePixel=0,ZIndex=2,
     },cPanel)
 
     -- Content header
@@ -618,7 +618,7 @@ function DevNgg:CreateWindow(config)
                 BackgroundColor3=C.BORDER,BackgroundTransparency=0.5,BorderSizePixel=0,
             },row)
             local pill=make("Frame",{
-                BackgroundColor3=C.NAVY,BackgroundTransparency=0,
+                BackgroundColor3=C.NAVY,BackgroundTransparency=T.SIDE,
                 BorderSizePixel=0,AutomaticSize=Enum.AutomaticSize.X,Size=UDim2.new(0,0,1,0),
             },row); corner(pill,5)
             make("TextLabel",{
@@ -891,7 +891,7 @@ function DevNgg:CreateWindow(config)
 
             local bdg=make("Frame",{
                 Size=UDim2.new(0,88,0,28),Position=UDim2.new(1,-100,0.5,-14),
-                BackgroundColor3=C.NAVY,BackgroundTransparency=0,BorderSizePixel=0,
+                BackgroundColor3=C.NAVY,BackgroundTransparency=0.35,BorderSizePixel=0,
             },w); corner(bdg,6); local bs=stroke(bdg,C.BORDER,1,0.4)
 
             local kLbl=make("TextLabel",{
@@ -968,7 +968,7 @@ function DevNgg:CreateWindow(config)
             },btn)
 
             local dl=make("Frame",{
-                BackgroundColor3=C.DARK,BackgroundTransparency=0,
+                BackgroundColor3=C.DARK,BackgroundTransparency=0.40,
                 BorderSizePixel=0,Visible=false,ZIndex=60,
             },sg); corner(dl,8); stroke(dl,C.BORDER_FOC,1,0.3)
 
@@ -1002,7 +1002,7 @@ function DevNgg:CreateWindow(config)
                         local sel=opt==selected
                         local item=make("TextButton",{
                             Size=UDim2.new(1,0,0,36),
-                            BackgroundColor3=C.DARK,BackgroundTransparency=0,BorderSizePixel=0,
+                            BackgroundColor3=C.DARK,BackgroundTransparency=0.40,BorderSizePixel=0,
                             Text="  "..opt,TextColor3=sel and C.TXT_A or C.TXT_B,
                             TextSize=12,Font=sel and F.HEAD or F.BODY,
                             AutoButtonColor=false,TextXAlignment=Enum.TextXAlignment.Left,
