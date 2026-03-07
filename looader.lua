@@ -29,8 +29,21 @@ local HUB_NAME = 'DevN.GG'
 local SCRIPT_ID = 'b21e1a3cb48e19e563afc194037d1234'
 local SCRIPT_URL = 'https://raw.githubusercontent.com/nh1cScript-gg/DevN.gg/main/devn.gg'
 
-local function saveKey(k) if writefile then pcall(function() writefile(KEY_FILE,k) end) end end
+local function saveKey(k)
+    -- Save to both file and getgenv so it survives server hops
+    if writefile then pcall(function() writefile(KEY_FILE,k) end) end
+    pcall(function() (getgenv and getgenv() or shared).__devngg_key = k end)
+    pcall(function() _G.__devngg_key = k end)
+end
 local function getSavedKey()
+    -- Try getgenv first (survives server hops even if file system doesn't)
+    local envKey = pcall(function()
+        return (getgenv and getgenv() or shared).__devngg_key
+    end) and (getgenv and getgenv() or shared).__devngg_key or nil
+    if type(envKey) == 'string' and #envKey > 5 then return envKey end
+    -- Fallback to _G
+    if type(_G.__devngg_key) == 'string' and #_G.__devngg_key > 5 then return _G.__devngg_key end
+    -- Fallback to file
     if not isfile then return nil end
     local ok,r=pcall(function() if isfile(KEY_FILE) then return readfile(KEY_FILE) end end)
     if ok and r and #r>5 then return r end return nil
@@ -46,8 +59,15 @@ end
 
 -- ── AUTO-LOAD: same pattern as LuminHub ──────────────────────
 local function tryAutoAuth()
+    -- If already validated this session, skip straight to loading
+    local _ge = getgenv and getgenv() or shared
+    if _ge.__devngg_key_valid and _ge.__devngg_key then
+        _ge.__devngg_loaded = nil
+        loadstring(game:HttpGet(SCRIPT_URL))()
+        return true
+    end
     -- grab key from any possible source
-    local envKey = script_key or _G.script_key or (getgenv and getgenv().script_key) or nil
+    local envKey = script_key or _G.script_key or (getgenv and getgenv().script_key) or _G.__devngg_key or (_ge.__devngg_key) or nil
     local savedKey = getSavedKey()
     if type(envKey) ~= 'string' then envKey = nil end
     if type(savedKey) ~= 'string' then savedKey = nil end
@@ -67,8 +87,10 @@ local function tryAutoAuth()
         getgenv().script_key = key
         _G.script_key = key
         saveKey(key)
-        -- Reset flag so the next server hop loads fresh
+        -- Mark as validated so next hop skips re-validation
         local _genv2 = getgenv and getgenv() or shared
+        _genv2.__devngg_key = key
+        _genv2.__devngg_key_valid = true
         _genv2.__devngg_loaded = nil
         loadstring(game:HttpGet(SCRIPT_URL))()
         return true
@@ -211,6 +233,8 @@ ckb.MouseButton1Click:Connect(function()
             ss('✅ Key valid! Loading '..HUB_NAME..'...',Color3.fromRGB(87,242,135),true)
             getgenv().script_key=k _G.script_key=k saveKey(k)
             local _genv3 = getgenv and getgenv() or shared
+            _genv3.__devngg_key = k
+            _genv3.__devngg_key_valid = true
             _genv3.__devngg_loaded = nil
             task.wait(1.2)
             closeGUI(function()
