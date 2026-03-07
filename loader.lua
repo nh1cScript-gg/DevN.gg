@@ -496,7 +496,7 @@ function DevNgg:CreateWindow(config)
     local miniTitleLbl=make("TextLabel",{
         Size=UDim2.new(1,-90,1,0),Position=UDim2.new(0,14,0,0),
         BackgroundTransparency=1,Text=winTitle,TextColor3=C.TXT_A,
-        TextSize=mobile and 13 or 15,Font=F.TITLE,
+        TextSize=mobile and 18 or 18,Font=F.TITLE,
         TextXAlignment=Enum.TextXAlignment.Left,ZIndex=4,Visible=false,
     },cHdr)
     make("Frame",{
@@ -660,11 +660,12 @@ function DevNgg:CreateWindow(config)
         tabTitleLbl.Visible  = not minimized
         miniTitleLbl.Visible = minimized
         if minimized then
-            local pillH = mobile and 38 or 48
+            local pillW = mobile and 220 or WW
+            local pillH = mobile and 52 or 48
             -- pill: cPanel full width so title+buttons show
             cPanel.Size     = UDim2.new(1,0,1,0)
             cPanel.Position = UDim2.new(0,0,0,0)
-            tw(main,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{Size=UDim2.new(0,WW,0,pillH)})
+            tw(main,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{Size=UDim2.new(0,pillW,0,pillH)})
         else
             updateCPanelWidth()
             tw(main,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{Size=UDim2.new(0,WW,0,WH)})
