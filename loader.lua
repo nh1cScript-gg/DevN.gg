@@ -338,24 +338,25 @@ function DevNgg:CreateWindow(config)
 
     -- ── Main window ────────────────────────────────────────────
     local mobile = isMobile()
-    local SW = mobile and 145 or 175
-    local WW = mobile and math.min(math.floor(workspace.CurrentCamera.ViewportSize.X - 20), 520) or 610
-    local WH = mobile and math.min(math.floor(workspace.CurrentCamera.ViewportSize.Y - 60), 480) or 420
+    local vp     = workspace.CurrentCamera.ViewportSize
+    -- On mobile: fill almost the entire screen
+    local SW = mobile and 120 or 175
+    local WW = mobile and math.floor(vp.X - 16) or 610
+    local WH = mobile and math.floor(vp.Y - 80) or 420
 
+    local mainPosX = mobile and 8 or (-WW/2)
+    local mainPosXS = mobile and 0 or 0.5
+    local mainPosY = mobile and 40 or (-WH/2)
+    local mainPosYS = mobile and 0 or 0.5
     local main=make("Frame",{
         Name="Main",Size=UDim2.new(0,WW,0,WH),
-        Position=UDim2.new(0.5,-WW/2,0.5,-WH/2),
+        Position=UDim2.new(mainPosXS,mainPosX,mainPosYS,mainPosY),
         BackgroundColor3=C.DARK,BackgroundTransparency=T.CONT,
         BorderSizePixel=0,ClipsDescendants=false,
-        Visible=false,  -- shown after loading finishes
+        Visible=false,
     },sg)
-    corner(main,12); stroke(main,C.BORDER,1,0.5)
+    corner(main, mobile and 8 or 12); stroke(main,C.BORDER,1,0.5)
     mainFrame=main
-
-    -- UIScale for whole window on mobile
-    if mobile then
-        make("UIScale",{Scale=0.95},main)
-    end
 
     -- Shadow
     make("ImageLabel",{
@@ -391,17 +392,20 @@ function DevNgg:CreateWindow(config)
         BackgroundColor3=C.BORDER,BackgroundTransparency=0.4,BorderSizePixel=0,ZIndex=6,
     },main)
 
-    -- Sidebar header (drag handle) — bigger title, no subtitle
+    -- Sidebar header (drag handle)
+    local sHdrH = mobile and 50 or 76
+    local sHdrTS = mobile and 16 or 28
     local sHdr=make("Frame",{
-        Size=UDim2.new(1,0,0,76),BackgroundColor3=C.HDR,
+        Size=UDim2.new(1,0,0,sHdrH),BackgroundColor3=C.HDR,
         BackgroundTransparency=T.HDR,BorderSizePixel=0,ZIndex=5,
     },side)
     make("TextLabel",{
-        Size=UDim2.new(1,-10,1,-16),Position=UDim2.new(0,10,0,8),
+        Size=UDim2.new(1,-10,1,-8),Position=UDim2.new(0,8,0,4),
         BackgroundTransparency=1,Text=winTitle,TextColor3=C.TXT_A,
-        TextSize=28,Font=F.TITLE,
+        TextSize=sHdrTS,Font=F.TITLE,
         TextXAlignment=Enum.TextXAlignment.Left,
         TextYAlignment=Enum.TextYAlignment.Center,
+        TextWrapped=true,
         ZIndex=6,
     },sHdr)
     make("Frame",{
@@ -410,8 +414,10 @@ function DevNgg:CreateWindow(config)
     },sHdr)
 
     -- Tab scroll
+    local sScrollTop = mobile and (sHdrH+1) or 77
+    local sScrollBot = mobile and (sHdrH+30) or 113
     local sScroll=make("ScrollingFrame",{
-        Size=UDim2.new(1,0,1,-113),Position=UDim2.new(0,0,0,77),
+        Size=UDim2.new(1,0,1,-sScrollBot),Position=UDim2.new(0,0,0,sScrollTop),
         BackgroundTransparency=1,BorderSizePixel=0,
         ScrollBarThickness=mobile and 4 or 2,ScrollBarImageColor3=C.ACCENT,
         CanvasSize=UDim2.new(0,0,0,0),AutomaticCanvasSize=Enum.AutomaticSize.Y,
@@ -455,14 +461,15 @@ function DevNgg:CreateWindow(config)
     },main)
 
     -- Content header
+    local cHdrH = mobile and 40 or 48
     local cHdr=make("Frame",{
-        Size=UDim2.new(1,0,0,48),BackgroundColor3=C.HDR,
+        Size=UDim2.new(1,0,0,cHdrH),BackgroundColor3=C.HDR,
         BackgroundTransparency=T.HDR,BorderSizePixel=0,ZIndex=3,
     },cPanel)
     local tabTitleLbl=make("TextLabel",{
         Size=UDim2.new(1,-90,1,0),Position=UDim2.new(0,14,0,0),
         BackgroundTransparency=1,Text="",TextColor3=C.TXT_A,
-        TextSize=15,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=4,
+        TextSize=mobile and 13 or 15,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=4,
     },cHdr)
     make("Frame",{
         Size=UDim2.new(1,0,0,1),Position=UDim2.new(0,0,1,0),
@@ -491,7 +498,7 @@ function DevNgg:CreateWindow(config)
     closeBtn.MouseButton1Click:Connect(function() DevNgg:SetVisibility(false) end)
 
     local cClip=make("Frame",{
-        Size=UDim2.new(1,0,1,-49),Position=UDim2.new(0,0,0,49),
+        Size=UDim2.new(1,0,1,-(cHdrH+1)),Position=UDim2.new(0,0,0,cHdrH+1),
         BackgroundTransparency=1,ClipsDescendants=true,ZIndex=2,
     },cPanel)
 
@@ -576,6 +583,7 @@ function DevNgg:CreateWindow(config)
 
     local function updateH()
         if not activeTab or minimized then return end
+        if mobile then return end -- mobile fills screen, no dynamic resize
         local h=math.clamp(activeTab.ll.AbsoluteContentSize.Y+49+24,WH,580)
         tw(main,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{Size=UDim2.new(0,WW,0,h)})
     end
@@ -616,15 +624,16 @@ function DevNgg:CreateWindow(config)
     function Window:CreateTab(name,_icon)
         tabCount+=1; local idx=tabCount
 
-        -- Sidebar button (taller on mobile for easier tapping)
-        local sBtnH = mobile and 44 or 36
-        local sBtnTS = mobile and 13 or 12
+        -- Sidebar button
+        local sBtnH = mobile and 40 or 36
+        local sBtnTS = mobile and 11 or 12
         local sBtn=make("TextButton",{
-            Name=name,Size=UDim2.new(1,-14,0,sBtnH),Position=UDim2.new(0,7,0,0),
+            Name=name,Size=UDim2.new(1,-10,0,sBtnH),Position=UDim2.new(0,5,0,0),
             BackgroundColor3=C.TAB_ON_BG,BackgroundTransparency=1,
-            BorderSizePixel=0,Text="  "..name,
+            BorderSizePixel=0,Text=" "..name,
             TextColor3=C.TAB_OFF,TextSize=sBtnTS,Font=F.HEAD,
             AutoButtonColor=false,TextXAlignment=Enum.TextXAlignment.Left,
+            TextWrapped=true,
             LayoutOrder=idx,ZIndex=5,
         },sScroll); corner(sBtn,7)
 
