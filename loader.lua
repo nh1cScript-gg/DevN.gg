@@ -350,10 +350,10 @@ function DevNgg:CreateWindow(config)
     -- ── Main window ────────────────────────────────────────────
     local mobile = isMobile()
     local vp     = workspace.CurrentCamera.ViewportSize
-    -- On mobile: fixed compact size that works in portrait and landscape
-    local SW = mobile and 90  or 175
-    local WW = mobile and 340 or 610
-    local WH = mobile and 320 or 420
+    -- On mobile: fit within screen, max 300x260 so game stays visible
+    local SW = mobile and 85  or 175
+    local WW = mobile and math.min(math.floor(vp.X * 0.82), 300) or 610
+    local WH = mobile and math.min(math.floor(vp.Y * 0.55), 260) or 420
 
     local mainPosX = mobile and (-WW/2) or (-WW/2)
     local mainPosXS = mobile and 0.5 or 0.5
@@ -491,6 +491,13 @@ function DevNgg:CreateWindow(config)
         Size=UDim2.new(1,-90,1,0),Position=UDim2.new(0,14,0,0),
         BackgroundTransparency=1,Text="",TextColor3=C.TXT_A,
         TextSize=mobile and 13 or 15,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=4,
+    },cHdr)
+    -- Minimized title — shows "DevN.GG" when collapsed, hidden when expanded
+    local miniTitleLbl=make("TextLabel",{
+        Size=UDim2.new(1,-90,1,0),Position=UDim2.new(0,14,0,0),
+        BackgroundTransparency=1,Text=winTitle,TextColor3=C.TXT_A,
+        TextSize=mobile and 13 or 15,Font=F.TITLE,
+        TextXAlignment=Enum.TextXAlignment.Left,ZIndex=4,Visible=false,
     },cHdr)
     make("Frame",{
         Size=UDim2.new(1,0,0,1),Position=UDim2.new(0,0,1,0),
@@ -634,6 +641,8 @@ function DevNgg:CreateWindow(config)
         end
         tab.content.Visible=true; activeTab=tab
         tabTitleLbl.Text=tab.name
+        tabTitleLbl.Visible  = not minimized
+        miniTitleLbl.Visible = minimized
         tw(tab.btn,FAST,{
             BackgroundColor3=C.TAB_ON_BG,BackgroundTransparency=0,TextColor3=C.TAB_ON_FG,
         })
@@ -644,19 +653,19 @@ function DevNgg:CreateWindow(config)
     local function doMinimize()
         minimized = not minimized
         closeAllDropdowns()
-        -- Hide/show content areas
-        cClip.Visible   = not minimized
-        sScroll.Visible = not minimized
-        sFoot.Visible   = not minimized
-        side.Visible    = not minimized
+        cClip.Visible      = not minimized
+        sScroll.Visible    = not minimized
+        sFoot.Visible      = not minimized
+        side.Visible       = not minimized
+        tabTitleLbl.Visible  = not minimized
+        miniTitleLbl.Visible = minimized
         if minimized then
-            -- Pill: full width of window, just the header bar tall
-            local pillH = mobile and 40 or 48
+            local pillH = mobile and 38 or 48
+            -- pill: cPanel full width so title+buttons show
             cPanel.Size     = UDim2.new(1,0,1,0)
             cPanel.Position = UDim2.new(0,0,0,0)
             tw(main,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{Size=UDim2.new(0,WW,0,pillH)})
         else
-            -- Restore
             updateCPanelWidth()
             tw(main,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{Size=UDim2.new(0,WW,0,WH)})
         end
