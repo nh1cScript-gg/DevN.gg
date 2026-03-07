@@ -298,9 +298,9 @@ function DevNgg:CreateWindow(config)
     -- (overlay blocks Roblox touch input — never use a fullscreen TextButton)
     if isMobile() then
         UserInputService.TouchTap:Connect(function(positions)
-            -- Only close if tap is outside the main window
+            if dragging then return end
             local pos = positions[1]
-            if not pos then closeAllDropdowns() return end
+            if not pos then return end
             local mp = main.AbsolutePosition
             local ms = main.AbsoluteSize
             local x, y = pos.X, pos.Y
@@ -345,15 +345,15 @@ function DevNgg:CreateWindow(config)
     -- ── Main window ────────────────────────────────────────────
     local mobile = isMobile()
     local vp     = workspace.CurrentCamera.ViewportSize
-    -- On mobile: fill almost the entire screen
-    local SW = mobile and 120 or 175
-    local WW = mobile and math.floor(vp.X - 16) or 610
-    local WH = mobile and math.floor(vp.Y - 80) or 420
+    -- On mobile: use 72% width, 68% height so game is still visible
+    local SW = mobile and 100 or 175
+    local WW = mobile and math.floor(math.min(vp.X, vp.Y) * 0.92) or 610
+    local WH = mobile and math.floor(math.max(vp.X, vp.Y) * 0.60) or 420
 
-    local mainPosX = mobile and 8 or (-WW/2)
-    local mainPosXS = mobile and 0 or 0.5
-    local mainPosY = mobile and 40 or (-WH/2)
-    local mainPosYS = mobile and 0 or 0.5
+    local mainPosX = mobile and (-WW/2) or (-WW/2)
+    local mainPosXS = mobile and 0.5 or 0.5
+    local mainPosY = mobile and (-WH/2 - 30) or (-WH/2)
+    local mainPosYS = mobile and 0.5 or 0.5
     local main=make("Frame",{
         Name="Main",Size=UDim2.new(0,WW,0,WH),
         Position=UDim2.new(mainPosXS,mainPosX,mainPosYS,mainPosY),
@@ -399,8 +399,8 @@ function DevNgg:CreateWindow(config)
     },main)
 
     -- Sidebar header (drag handle)
-    local sHdrH = mobile and 50 or 76
-    local sHdrTS = mobile and 16 or 28
+    local sHdrH = mobile and 38 or 76
+    local sHdrTS = mobile and 13 or 28
     local sHdr=make("Frame",{
         Size=UDim2.new(1,0,0,sHdrH),BackgroundColor3=C.HDR,
         BackgroundTransparency=T.HDR,BorderSizePixel=0,ZIndex=5,
@@ -477,7 +477,7 @@ function DevNgg:CreateWindow(config)
     },main)
 
     -- Content header
-    local cHdrH = mobile and 40 or 48
+    local cHdrH = mobile and 34 or 48
     local cHdr=make("Frame",{
         Size=UDim2.new(1,0,0,cHdrH),BackgroundColor3=C.HDR,
         BackgroundTransparency=T.HDR,BorderSizePixel=0,ZIndex=3,
@@ -493,9 +493,9 @@ function DevNgg:CreateWindow(config)
     },cHdr)
 
     -- Window controls (close / minimise) — bigger on mobile for touch
-    local btnSz  = mobile and 38 or 26
-    local btnTS  = mobile and 18 or 14
-    local btnGap = mobile and 10 or 6
+    local btnSz  = mobile and 28 or 26
+    local btnTS  = mobile and 14 or 14
+    local btnGap = mobile and 6 or 6
     local function mkBtn(idx,sym,hcol)
         -- idx 1=close, 2=min — position from right edge
         local offX = -(btnSz + (idx-1)*(btnSz+btnGap) + btnGap)
@@ -540,21 +540,36 @@ function DevNgg:CreateWindow(config)
     end
     local function endDrag() dragging=false end
 
+    -- Track which touch input started on the header so we only drag that one
+    local dragTouchId = nil
+
     sHdr.InputBegan:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseButton1
-        or i.UserInputType==Enum.UserInputType.Touch then
+        if i.UserInputType==Enum.UserInputType.MouseButton1 then
             startDrag(i.Position)
+        elseif i.UserInputType==Enum.UserInputType.Touch then
+            -- Only start drag if no drag is active yet
+            if not dragging then
+                dragTouchId = i
+                startDrag(i.Position)
+            end
         end
     end)
     UserInputService.InputChanged:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseMovement
-        or i.UserInputType==Enum.UserInputType.Touch then
+        if not dragging then return end
+        if i.UserInputType==Enum.UserInputType.MouseMovement then
+            updateDrag(i.Position)
+        elseif i.UserInputType==Enum.UserInputType.Touch and i==dragTouchId then
+            -- Only move window for the exact touch that started on the header
             updateDrag(i.Position)
         end
     end)
     UserInputService.InputEnded:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseButton1
-        or i.UserInputType==Enum.UserInputType.Touch then endDrag() end
+        if i.UserInputType==Enum.UserInputType.MouseButton1 then
+            endDrag()
+        elseif i.UserInputType==Enum.UserInputType.Touch and i==dragTouchId then
+            endDrag()
+            dragTouchId = nil
+        end
     end)
 
     -- Toggle keybind
@@ -649,10 +664,7 @@ function DevNgg:CreateWindow(config)
             side.Visible=true
             updateCPanelWidth()
             if mobile then
-                local vp2 = workspace.CurrentCamera.ViewportSize
-                local fullW = math.floor(vp2.X - 16)
-                local fullH = math.floor(vp2.Y - 80)
-                tw(main,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{Size=UDim2.new(0,fullW,0,fullH)})
+                tw(main,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{Size=UDim2.new(0,WW,0,WH)})
             else
                 updateH()
             end
@@ -671,8 +683,8 @@ function DevNgg:CreateWindow(config)
         tabCount+=1; local idx=tabCount
 
         -- Sidebar button
-        local sBtnH = mobile and 40 or 36
-        local sBtnTS = mobile and 11 or 12
+        local sBtnH = mobile and 34 or 36
+        local sBtnTS = mobile and 10 or 12
         local sBtn=make("TextButton",{
             Name=name,Size=UDim2.new(1,-10,0,sBtnH),Position=UDim2.new(0,5,0,0),
             BackgroundColor3=C.TAB_ON_BG,BackgroundTransparency=1,
@@ -801,13 +813,13 @@ function DevNgg:CreateWindow(config)
         function Tab:CreateToggle(cfg)
             local flag=cfg.Flag; local enabled=cfg.CurrentValue or false
 
-            local togH    = mobile and 58 or 48
-            local togTS   = mobile and 14 or 13
-            local pillW   = mobile and 50 or 40
-            local pillH   = mobile and 28 or 22
-            local knobS   = mobile and 20 or 16
-            local pillR   = mobile and 14 or 11
-            local pillOff = mobile and -(pillW/2+8) or -52
+            local togH    = mobile and 44 or 48
+            local togTS   = mobile and 12 or 13
+            local pillW   = mobile and 38 or 40
+            local pillH   = mobile and 20 or 22
+            local knobS   = mobile and 14 or 16
+            local pillR   = mobile and 10 or 11
+            local pillOff = mobile and -(pillW+10) or -52
             local knobOff = mobile and -(knobS/2) or -8
 
             local row=make("TextButton",{
@@ -872,8 +884,8 @@ function DevNgg:CreateWindow(config)
         end
 
         function Tab:CreateButton(cfg)
-            local btnH  = mobile and 54 or 44
-            local btnTS = mobile and 15 or 13
+            local btnH  = mobile and 40 or 44
+            local btnTS = mobile and 12 or 13
             local btn=make("TextButton",{
                 Size=UDim2.new(1,0,0,btnH),BackgroundColor3=C.DARK,
                 BackgroundTransparency=T.SURF,BorderSizePixel=0,
@@ -901,10 +913,10 @@ function DevNgg:CreateWindow(config)
         end
 
         function Tab:CreateTextInput(cfg)
-            local inpBoxH = mobile and 52 or 40
-            local inpLblH = mobile and 20 or 16
-            local inpTS   = mobile and 14 or 13
-            local inpLTS  = mobile and 13 or 11
+            local inpBoxH = mobile and 36 or 40
+            local inpLblH = mobile and 14 or 16
+            local inpTS   = mobile and 12 or 13
+            local inpLTS  = mobile and 11 or 11
             local inpTotalH = inpBoxH + inpLblH + 4
             local w=make("Frame",{Size=UDim2.new(1,0,0,inpTotalH),BackgroundTransparency=1,BorderSizePixel=0},content)
             make("TextLabel",{
@@ -1081,14 +1093,14 @@ function DevNgg:CreateWindow(config)
             local options=cfg.Options or {}; local selected=cfg.Default or ""; local isOpen=false
 
             -- Mobile-aware sizes
-            local ddBtnH   = mobile and 52  or 40
-            local ddLblH   = mobile and 20  or 16
-            local ddLblTS  = mobile and 13  or 11
-            local ddBtnTS  = mobile and 14  or 12
-            local ddItemH  = mobile and 50  or 36
-            local ddItemTS = mobile and 14  or 12
-            local ddMaxH   = mobile and math.min(math.floor(workspace.CurrentCamera.ViewportSize.Y * 0.45), 320) or 200
-            local ddSBT    = mobile and 4   or 2  -- scrollbar thickness
+            local ddBtnH   = mobile and 36  or 40
+            local ddLblH   = mobile and 14  or 16
+            local ddLblTS  = mobile and 11  or 11
+            local ddBtnTS  = mobile and 12  or 12
+            local ddItemH  = mobile and 40  or 36
+            local ddItemTS = mobile and 12  or 12
+            local ddMaxH   = mobile and math.min(math.floor(workspace.CurrentCamera.ViewportSize.Y * 0.40), 240) or 200
+            local ddSBT    = mobile and 3   or 2  -- scrollbar thickness
             local ddTotalH = ddBtnH + ddLblH + 4
 
             local w=make("Frame",{Size=UDim2.new(1,0,0,ddTotalH),BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=false},content)
