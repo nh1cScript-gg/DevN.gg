@@ -217,13 +217,21 @@ local notifGui=make("ScreenGui",{
 pcall(function() notifGui.IgnoreGuiInset=true end)
 safeParent(notifGui)
 
+local _isMobileNotif = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+local _nW  = _isMobileNotif and 200 or 285
+local _nOff = _isMobileNotif and (_nW+8) or 298
+local _nCardH = _isMobileNotif and 52 or 66
+local _nBarH  = _isMobileNotif and 24 or 32
+local _nTitleS = _isMobileNotif and 11 or 13
+local _nBodyS  = _isMobileNotif and 10 or 11
+
 local nHolder=make("Frame",{
-    Size=UDim2.new(0,285,1,0),Position=UDim2.new(1,-298,0,0),
+    Size=UDim2.new(0,_nW,1,0),Position=UDim2.new(1,-_nOff,0,0),
     BackgroundTransparency=1,
 },notifGui)
-listL(nHolder,6,Enum.FillDirection.Vertical,
+listL(nHolder,4,Enum.FillDirection.Vertical,
     Enum.HorizontalAlignment.Right,Enum.VerticalAlignment.Bottom)
-pad(nHolder,0,18,0,0)
+pad(nHolder,0,10,0,0)
 
 local nCount=0
 
@@ -234,26 +242,26 @@ function DevNgg:Notify(cfg)
     local dur  =cfg.Duration or 3
 
     local card=make("Frame",{
-        Size=UDim2.new(1,0,0,66),BackgroundColor3=C.NAVY,
+        Size=UDim2.new(1,0,0,_nCardH),BackgroundColor3=C.NAVY,
         BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=true,
-    },nHolder); corner(card,10)
+    },nHolder); corner(card,8)
     local cs=stroke(card,C.BORDER,1,1)
 
     local bar=make("Frame",{
-        Size=UDim2.new(0,3,0,32),Position=UDim2.new(0,0,0.5,-16),
+        Size=UDim2.new(0,3,0,_nBarH),Position=UDim2.new(0,0,0.5,-_nBarH/2),
         BackgroundColor3=C.ACCENT,BackgroundTransparency=1,BorderSizePixel=0,
     },card); corner(bar,2)
 
     local tL=make("TextLabel",{
-        Size=UDim2.new(1,-20,0,20),Position=UDim2.new(0,14,0,11),
+        Size=UDim2.new(1,-16,0,_isMobileNotif and 16 or 20),Position=UDim2.new(0,10,0,_isMobileNotif and 8 or 11),
         BackgroundTransparency=1,Text=title,TextColor3=C.TXT_A,
-        TextTransparency=1,TextSize=13,Font=F.HEAD,
+        TextTransparency=1,TextSize=_nTitleS,Font=F.HEAD,
         TextXAlignment=Enum.TextXAlignment.Left,
     },card)
     local sL=make("TextLabel",{
-        Size=UDim2.new(1,-20,0,18),Position=UDim2.new(0,14,0,33),
+        Size=UDim2.new(1,-16,0,_isMobileNotif and 14 or 18),Position=UDim2.new(0,10,0,_isMobileNotif and 26 or 33),
         BackgroundTransparency=1,Text=body,TextColor3=C.TXT_B,
-        TextTransparency=1,TextSize=11,Font=F.BODY,
+        TextTransparency=1,TextSize=_nBodyS,Font=F.BODY,
         TextXAlignment=Enum.TextXAlignment.Left,TextWrapped=true,
     },card)
     local pb=make("Frame",{
