@@ -1,5 +1,5 @@
 -- ╔══════════════════════════════════════════════════════════════════════╗
--- ║                  DevN.gg  UI Library  v4.3                         ║
+-- ║                  DevN.gg  UI Library  v4.4                         ║
 -- ║        Frosted Glass  ·  Soft Navy  ·  Minimalist                  ║
 -- ║             github.com/nh1cScript-gg/DevN.gg                       ║
 -- ╚══════════════════════════════════════════════════════════════════════╝
@@ -358,14 +358,14 @@ function DevNgg:CreateWindow(config)
     -- ── Main window ────────────────────────────────────────────
     local mobile = isMobile()
     local vp     = workspace.CurrentCamera.ViewportSize
-    -- On mobile: fit within screen, max 300x260 so game stays visible
-    local SW = mobile and 85  or 175
-    local WW = mobile and math.min(math.floor(vp.X * 0.82), 300) or 610
-    local WH = mobile and math.min(math.floor(vp.Y * 0.55), 260) or 420
+    -- On mobile: compact layout — narrow sidebar, limited height so game stays visible
+    local SW = mobile and 68  or 175
+    local WW = mobile and math.min(math.floor(vp.X * 0.72), 260) or 610
+    local WH = mobile and math.min(math.floor(vp.Y * 0.44), 220) or 420
 
     local mainPosX = mobile and (-WW/2) or (-WW/2)
     local mainPosXS = mobile and 0.5 or 0.5
-    local mainPosY = mobile and (-WH/2 - 30) or (-WH/2)
+    local mainPosY = mobile and (-WH/2 - 20) or (-WH/2)
     local mainPosYS = mobile and 0.5 or 0.5
     local main=make("Frame",{
         Name="Main",Size=UDim2.new(0,WW,0,WH),
@@ -412,8 +412,8 @@ function DevNgg:CreateWindow(config)
     },main)
 
     -- Sidebar header (drag handle)
-    local sHdrH = mobile and 38 or 76
-    local sHdrTS = mobile and 13 or 28
+    local sHdrH = mobile and 30 or 76
+    local sHdrTS = mobile and 11 or 28
     local sHdr=make("Frame",{
         Size=UDim2.new(1,0,0,sHdrH),BackgroundColor3=C.HDR,
         BackgroundTransparency=T.HDR,BorderSizePixel=0,ZIndex=5,
@@ -490,7 +490,7 @@ function DevNgg:CreateWindow(config)
     },main)
 
     -- Content header
-    local cHdrH = mobile and 34 or 48
+    local cHdrH = mobile and 28 or 48
     local cHdr=make("Frame",{
         Size=UDim2.new(1,0,0,cHdrH),BackgroundColor3=C.HDR,
         BackgroundTransparency=T.HDR,BorderSizePixel=0,ZIndex=3,
@@ -508,9 +508,9 @@ function DevNgg:CreateWindow(config)
     },cHdr)
 
     -- Window controls (close / minimise) — bigger on mobile for touch
-    local btnSz  = mobile and 28 or 26
-    local btnTS  = mobile and 14 or 14
-    local btnGap = mobile and 6 or 6
+    local btnSz  = mobile and 22 or 26
+    local btnTS  = mobile and 12 or 14
+    local btnGap = mobile and 4 or 6
     local function mkBtn(idx,sym,hcol)
         -- idx 1=close, 2=min — position from right edge
         local offX = -(btnSz + (idx-1)*(btnSz+btnGap) + btnGap)
@@ -533,8 +533,15 @@ function DevNgg:CreateWindow(config)
     local closeBtn=mkBtn(1,"×",C.RED)
     local minBtn  =mkBtn(2,"−",C.AMBER)
     local function doClose() DevNgg:SetVisibility(false) end
-    closeBtn.MouseButton1Click:Connect(doClose)
-    closeBtn.TouchTap:Connect(doClose)
+    local _closeDebounce = false
+    local function doCloseSafe()
+        if _closeDebounce then return end
+        _closeDebounce = true
+        doClose()
+        task.delay(0.35, function() _closeDebounce = false end)
+    end
+    closeBtn.MouseButton1Click:Connect(doCloseSafe)
+    closeBtn.TouchTap:Connect(doCloseSafe)
 
     local cClip=make("Frame",{
         Size=UDim2.new(1,0,1,-(cHdrH+1)),Position=UDim2.new(0,0,0,cHdrH+1),
@@ -692,8 +699,15 @@ function DevNgg:CreateWindow(config)
         end
         minBtn.Text = minimized and "+" or "−"
     end
-    minBtn.MouseButton1Click:Connect(doMinimize)
-    minBtn.TouchTap:Connect(doMinimize)
+    local _minDebounce = false
+    local function doMinimizeSafe()
+        if _minDebounce then return end
+        _minDebounce = true
+        doMinimize()
+        task.delay(0.35, function() _minDebounce = false end)
+    end
+    minBtn.MouseButton1Click:Connect(doMinimizeSafe)
+    minBtn.TouchTap:Connect(doMinimizeSafe)
 
     -- ══════════════════════════════════════════════════════════
     -- WINDOW OBJECT
@@ -704,8 +718,8 @@ function DevNgg:CreateWindow(config)
         tabCount+=1; local idx=tabCount
 
         -- Sidebar button
-        local sBtnH = mobile and 34 or 36
-        local sBtnTS = mobile and 10 or 12
+        local sBtnH = mobile and 28 or 36
+        local sBtnTS = mobile and 9 or 12
         local sBtn=make("TextButton",{
             Name=name,Size=UDim2.new(1,-10,0,sBtnH),Position=UDim2.new(0,5,0,0),
             BackgroundColor3=C.TAB_ON_BG,BackgroundTransparency=1,
@@ -741,12 +755,16 @@ function DevNgg:CreateWindow(config)
         local tLL=make("UIListLayout",{
             SortOrder=Enum.SortOrder.LayoutOrder,
             HorizontalAlignment=Enum.HorizontalAlignment.Center,
-            Padding=UDim.new(0,5),
-        },tSF); pad(tSF,12,18,12,12)
+            Padding=UDim.new(0,mobile and 3 or 5),
+        },tSF); pad(tSF, mobile and 8 or 12, mobile and 12 or 18, mobile and 8 or 12, mobile and 8 or 12)
 
         local tabData={name=name,btn=sBtn,acc=sAcc,content=tSF,ll=tLL}
         table.insert(tabs,tabData)
         sBtn.MouseButton1Click:Connect(function() switchTab(tabData) end)
+        -- Close dropdowns when tab content scrolls (prevents floating dropdown following issue)
+        tSF:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+            closeAllDropdowns()
+        end)
         tLL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
             if activeTab==tabData then updateH() end
         end)
@@ -790,13 +808,13 @@ function DevNgg:CreateWindow(config)
 
         function Tab:CreateLabel(cfg)
             local f=make("Frame",{
-                Size=UDim2.new(1,0,0,38),BackgroundColor3=C.DARK,
+                Size=UDim2.new(1,0,0,mobile and 30 or 38),BackgroundColor3=C.DARK,
                 BackgroundTransparency=T.SURF,BorderSizePixel=0,
             },content); corner(f,8); stroke(f,C.BORDER,1,0.5)
             local lbl=make("TextLabel",{
                 Size=UDim2.new(1,-20,1,0),Position=UDim2.new(0,10,0,0),
                 BackgroundTransparency=1,Text=cfg.Text or "",TextColor3=C.TXT_B,
-                TextSize=12,Font=F.BODY,TextXAlignment=Enum.TextXAlignment.Left,TextWrapped=true,
+                TextSize=mobile and 10 or 12,Font=F.BODY,TextXAlignment=Enum.TextXAlignment.Left,TextWrapped=true,
             },f)
             local L={}
             function L:Set(t) lbl.Text=t end
@@ -810,18 +828,18 @@ function DevNgg:CreateWindow(config)
                 BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF,BorderSizePixel=0,
             },content); corner(f,8); stroke(f,C.BORDER,1,0.5)
             local inner=make("Frame",{Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1},f)
-            pad(inner,10,10,12,12)
-            make("UIListLayout",{SortOrder=Enum.SortOrder.LayoutOrder,Padding=UDim.new(0,4)},inner)
+            pad(inner, mobile and 7 or 10, mobile and 7 or 10, mobile and 9 or 12, mobile and 9 or 12)
+            make("UIListLayout",{SortOrder=Enum.SortOrder.LayoutOrder,Padding=UDim.new(0,3)},inner)
             local tL=make("TextLabel",{
                 Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
                 BackgroundTransparency=1,Text=cfg.Title or "",TextColor3=C.TXT_A,
-                TextSize=13,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Left,
+                TextSize=mobile and 11 or 13,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Left,
                 TextWrapped=true,LayoutOrder=1,
             },inner)
             local bL=make("TextLabel",{
                 Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
                 BackgroundTransparency=1,Text=cfg.Content or "",TextColor3=C.TXT_B,
-                TextSize=12,Font=F.BODY,TextXAlignment=Enum.TextXAlignment.Left,
+                TextSize=mobile and 10 or 12,Font=F.BODY,TextXAlignment=Enum.TextXAlignment.Left,
                 TextWrapped=true,LayoutOrder=2,
             },inner)
             local P={}
@@ -834,13 +852,13 @@ function DevNgg:CreateWindow(config)
         function Tab:CreateToggle(cfg)
             local flag=cfg.Flag; local enabled=cfg.CurrentValue or false
 
-            local togH    = mobile and 44 or 48
-            local togTS   = mobile and 12 or 13
-            local pillW   = mobile and 38 or 40
-            local pillH   = mobile and 20 or 22
-            local knobS   = mobile and 14 or 16
-            local pillR   = mobile and 10 or 11
-            local pillOff = mobile and -(pillW+10) or -52
+            local togH    = mobile and 36 or 48
+            local togTS   = mobile and 11 or 13
+            local pillW   = mobile and 32 or 40
+            local pillH   = mobile and 17 or 22
+            local knobS   = mobile and 12 or 16
+            local pillR   = mobile and 8 or 11
+            local pillOff = mobile and -(pillW+8) or -52
             local knobOff = mobile and -(knobS/2) or -8
 
             local row=make("TextButton",{
@@ -905,8 +923,8 @@ function DevNgg:CreateWindow(config)
         end
 
         function Tab:CreateButton(cfg)
-            local btnH  = mobile and 40 or 44
-            local btnTS = mobile and 12 or 13
+            local btnH  = mobile and 34 or 44
+            local btnTS = mobile and 11 or 13
             local btn=make("TextButton",{
                 Size=UDim2.new(1,0,0,btnH),BackgroundColor3=C.DARK,
                 BackgroundTransparency=T.SURF,BorderSizePixel=0,
@@ -934,10 +952,10 @@ function DevNgg:CreateWindow(config)
         end
 
         function Tab:CreateTextInput(cfg)
-            local inpBoxH = mobile and 36 or 40
-            local inpLblH = mobile and 14 or 16
-            local inpTS   = mobile and 12 or 13
-            local inpLTS  = mobile and 11 or 11
+            local inpBoxH = mobile and 30 or 40
+            local inpLblH = mobile and 12 or 16
+            local inpTS   = mobile and 10 or 13
+            local inpLTS  = mobile and 10 or 11
             local inpTotalH = inpBoxH + inpLblH + 4
             local w=make("Frame",{Size=UDim2.new(1,0,0,inpTotalH),BackgroundTransparency=1,BorderSizePixel=0},content)
             make("TextLabel",{
@@ -971,24 +989,25 @@ function DevNgg:CreateWindow(config)
             local val=math.clamp(cfg.Default or mn,mn,mx)
             local drag=false; local dc=nil
 
+            local slH = mobile and 48 or 60
             local w=make("Frame",{
-                Size=UDim2.new(1,0,0,60),BackgroundColor3=C.DARK,
+                Size=UDim2.new(1,0,0,slH),BackgroundColor3=C.DARK,
                 BackgroundTransparency=T.SURF,BorderSizePixel=0,
             },content); corner(w,8); local ws=stroke(w,C.BORDER,1,0.5)
 
             make("TextLabel",{
-                Size=UDim2.new(1,-82,0,20),Position=UDim2.new(0,12,0,8),
+                Size=UDim2.new(1,-82,0,mobile and 16 or 20),Position=UDim2.new(0,10,0,mobile and 6 or 8),
                 BackgroundTransparency=1,Text=cfg.Name or "Slider",TextColor3=C.TXT_B,
-                TextSize=13,Font=F.BODY,TextXAlignment=Enum.TextXAlignment.Left,
+                TextSize=mobile and 11 or 13,Font=F.BODY,TextXAlignment=Enum.TextXAlignment.Left,
             },w)
             local vL=make("TextLabel",{
-                Size=UDim2.new(0,70,0,20),Position=UDim2.new(1,-80,0,8),
+                Size=UDim2.new(0,70,0,mobile and 16 or 20),Position=UDim2.new(1,-78,0,mobile and 6 or 8),
                 BackgroundTransparency=1,TextColor3=C.ACCENT,
-                TextSize=13,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Right,
+                TextSize=mobile and 11 or 13,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Right,
             },w)
 
             local tr=make("Frame",{
-                Size=UDim2.new(1,-24,0,4),Position=UDim2.new(0,12,0,42),
+                Size=UDim2.new(1,-20,0,4),Position=UDim2.new(0,10,0,mobile and 34 or 42),
                 BackgroundColor3=C.BORDER,BackgroundTransparency=0.3,BorderSizePixel=0,
             },w); corner(tr,2)
             local fi=make("Frame",{Size=UDim2.new(0,0,1,0),BackgroundColor3=C.ACCENT,BorderSizePixel=0},tr)
@@ -1044,24 +1063,24 @@ function DevNgg:CreateWindow(config)
             if cfg.Blacklist then for _,k in ipairs(cfg.Blacklist) do bl[k]=true end end
 
             local w=make("Frame",{
-                Size=UDim2.new(1,0,0,48),BackgroundColor3=C.DARK,
+                Size=UDim2.new(1,0,0,mobile and 38 or 48),BackgroundColor3=C.DARK,
                 BackgroundTransparency=T.SURF,BorderSizePixel=0,
             },content); corner(w,8); local ws=stroke(w,C.BORDER,1,0.5)
 
             make("TextLabel",{
-                Size=UDim2.new(1,-112,1,0),Position=UDim2.new(0,12,0,0),
+                Size=UDim2.new(1,-100,1,0),Position=UDim2.new(0,10,0,0),
                 BackgroundTransparency=1,Text=cfg.Name or "Keybind",TextColor3=C.TXT_B,
-                TextSize=13,Font=F.BODY,TextXAlignment=Enum.TextXAlignment.Left,
+                TextSize=mobile and 11 or 13,Font=F.BODY,TextXAlignment=Enum.TextXAlignment.Left,
             },w)
 
             local bdg=make("Frame",{
-                Size=UDim2.new(0,88,0,28),Position=UDim2.new(1,-100,0.5,-14),
+                Size=UDim2.new(0,mobile and 74 or 88,0,mobile and 22 or 28),Position=UDim2.new(1,-84,0.5,mobile and -11 or -14),
                 BackgroundColor3=C.NAVY,BackgroundTransparency=0.35,BorderSizePixel=0,
             },w); corner(bdg,6); local bs=stroke(bdg,C.BORDER,1,0.4)
 
             local kLbl=make("TextLabel",{
                 Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,TextColor3=C.TXT_B,
-                TextSize=11,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Center,
+                TextSize=mobile and 10 or 11,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Center,
             },bdg)
 
             local int=make("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",ZIndex=5},w)
@@ -1114,13 +1133,13 @@ function DevNgg:CreateWindow(config)
             local options=cfg.Options or {}; local selected=cfg.Default or ""; local isOpen=false
 
             -- Mobile-aware sizes
-            local ddBtnH   = mobile and 36  or 40
-            local ddLblH   = mobile and 14  or 16
-            local ddLblTS  = mobile and 11  or 11
-            local ddBtnTS  = mobile and 12  or 12
-            local ddItemH  = mobile and 40  or 36
-            local ddItemTS = mobile and 12  or 12
-            local ddMaxH   = mobile and math.min(math.floor(workspace.CurrentCamera.ViewportSize.Y * 0.40), 240) or 200
+            local ddBtnH   = mobile and 30  or 40
+            local ddLblH   = mobile and 12  or 16
+            local ddLblTS  = mobile and 10  or 11
+            local ddBtnTS  = mobile and 11  or 12
+            local ddItemH  = mobile and 32  or 36
+            local ddItemTS = mobile and 11  or 12
+            local ddMaxH   = mobile and math.min(math.floor(workspace.CurrentCamera.ViewportSize.Y * 0.30), 180) or 200
             local ddSBT    = mobile and 3   or 2  -- scrollbar thickness
             local ddTotalH = ddBtnH + ddLblH + 4
 
@@ -1293,28 +1312,29 @@ function DevNgg:CreateWindow(config)
             local h,s,v=color:ToHSV(); local isOpen=false
 
             local row=make("TextButton",{
-                Size=UDim2.new(1,0,0,48),BackgroundColor3=C.DARK,
+                Size=UDim2.new(1,0,0,mobile and 38 or 48),BackgroundColor3=C.DARK,
                 BackgroundTransparency=T.SURF,BorderSizePixel=0,Text="",AutoButtonColor=false,
             },content); corner(row,8); local rs=stroke(row,C.BORDER,1,0.5)
 
             make("TextLabel",{
-                Size=UDim2.new(1,-72,1,0),Position=UDim2.new(0,12,0,0),
+                Size=UDim2.new(1,-72,1,0),Position=UDim2.new(0,10,0,0),
                 BackgroundTransparency=1,Text=cfg.Name or "Color",TextColor3=C.TXT_B,
-                TextSize=13,Font=F.BODY,TextXAlignment=Enum.TextXAlignment.Left,
+                TextSize=mobile and 11 or 13,Font=F.BODY,TextXAlignment=Enum.TextXAlignment.Left,
             },row)
             local sw=make("Frame",{
-                Size=UDim2.new(0,28,0,16),Position=UDim2.new(1,-50,0.5,-8),
+                Size=UDim2.new(0,mobile and 22 or 28,0,mobile and 13 or 16),Position=UDim2.new(1,-46,0.5,mobile and -6 or -8),
                 BackgroundColor3=color,BorderSizePixel=0,
             },row); corner(sw,5); stroke(sw,C.BORDER,1,0.4)
             make("TextLabel",{
                 Size=UDim2.new(0,14,1,0),Position=UDim2.new(1,-18,0,0),
-                BackgroundTransparency=1,Text="▾",TextColor3=C.TXT_C,TextSize=12,Font=F.HEAD,
+                BackgroundTransparency=1,Text="▾",TextColor3=C.TXT_C,TextSize=mobile and 10 or 12,Font=F.HEAD,
             },row)
 
+            local cpH = mobile and 140 or 174
             local panel=make("Frame",{
-                Size=UDim2.new(1,0,0,174),BackgroundColor3=C.DARK,
+                Size=UDim2.new(1,0,0,cpH),BackgroundColor3=C.DARK,
                 BackgroundTransparency=T.SURF,BorderSizePixel=0,Visible=false,
-            },content); corner(panel,8); stroke(panel,C.BORDER,1,0.5); pad(panel,9,9,9,9)
+            },content); corner(panel,8); stroke(panel,C.BORDER,1,0.5); pad(panel,8,8,8,8)
 
             local svB=make("Frame",{Size=UDim2.new(1,-28,1,-38),BackgroundColor3=Color3.fromHSV(h,1,1),BorderSizePixel=0},panel)
             corner(svB,5)
