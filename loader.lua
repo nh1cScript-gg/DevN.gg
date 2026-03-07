@@ -494,10 +494,10 @@ function DevNgg:CreateWindow(config)
     },cHdr)
     -- Minimized title — shows "DevN.GG" when collapsed, hidden when expanded
     local miniTitleLbl=make("TextLabel",{
-        Size=UDim2.new(1,-90,1,0),Position=UDim2.new(0,14,0,0),
+        Size=UDim2.new(1,-90,1,0),Position=UDim2.new(0,0,0,0),
         BackgroundTransparency=1,Text=winTitle,TextColor3=C.TXT_A,
         TextSize=mobile and 18 or 18,Font=F.TITLE,
-        TextXAlignment=Enum.TextXAlignment.Left,ZIndex=4,Visible=false,
+        TextXAlignment=Enum.TextXAlignment.Center,ZIndex=4,Visible=false,
     },cHdr)
     make("Frame",{
         Size=UDim2.new(1,0,0,1),Position=UDim2.new(0,0,1,0),
