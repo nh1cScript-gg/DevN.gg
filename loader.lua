@@ -17,7 +17,12 @@ local playerGui = player:WaitForChild("PlayerGui")
 -- MOBILE DETECTION & SCALE
 -- ══════════════════════════════════════════════════════════════
 local function isMobile()
-    return UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+    -- Rayfield approach: check both TouchEnabled AND screen size
+    -- Some tablets have TouchEnabled but large screens — treat those as desktop
+    if not UserInputService.TouchEnabled then return false end
+    if UserInputService.MouseEnabled then return false end
+    local vp = workspace.CurrentCamera.ViewportSize
+    return math.min(vp.X, vp.Y) < 600
 end
 -- Returns a scale multiplier: 1.0 on PC, 1.35 on mobile
 local function uiScale()
@@ -296,15 +301,15 @@ function DevNgg:CreateWindow(config)
 
     -- Close dropdowns when tapping outside: use UserInputService instead of overlay
     -- (overlay blocks Roblox touch input — never use a fullscreen TextButton)
+    -- Close dropdowns when tapping outside the window on mobile
     if isMobile() then
-        UserInputService.TouchTap:Connect(function(positions)
-            if dragging then return end
-            local pos = positions[1]
-            if not pos then return end
-            local mp = main.AbsolutePosition
-            local ms = main.AbsoluteSize
-            local x, y = pos.X, pos.Y
-            if x < mp.X or x > mp.X + ms.X or y < mp.Y or y > mp.Y + ms.Y then
+        UserInputService.InputBegan:Connect(function(input, processed)
+            if processed then return end
+            if input.UserInputType ~= Enum.UserInputType.Touch then return end
+            local pos = input.Position
+            local mp  = main.AbsolutePosition
+            local ms  = main.AbsoluteSize
+            if pos.X < mp.X or pos.X > mp.X+ms.X or pos.Y < mp.Y or pos.Y > mp.Y+ms.Y then
                 closeAllDropdowns()
             end
         end)
@@ -527,48 +532,41 @@ function DevNgg:CreateWindow(config)
     },cPanel)
 
     -- ── Drag (mouse + touch) ──────────────────────────────────
-    local dragging   = false
-    local dragStart  = nil
-    local startPos   = nil
+    -- ── Drag (Rayfield-style) ─────────────────────────────────
+    -- Uses GetMouseLocation() which tracks BOTH mouse and touch finger.
+    -- RenderStepped moves the window — never intercepts game joystick/camera.
+    local dragging = false
+    local relative = Vector2.zero
+    local guiInsetOffset = Vector2.zero
+    pcall(function()
+        local gs = game:GetService("GuiService")
+        if sg.IgnoreGuiInset then guiInsetOffset = gs:GetGuiInset() end
+    end)
 
-    -- PC drag via mouse
-    sHdr.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging  = true
-            dragStart = i.Position
-            startPos  = main.AbsolutePosition
+    sHdr.InputBegan:Connect(function(input, processed)
+        if processed then return end  -- don't steal game input
+        local t = input.UserInputType
+        if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
+            dragging = true
+            relative = main.AbsolutePosition + main.AbsoluteSize * main.AnchorPoint
+                       - UserInputService:GetMouseLocation()
         end
     end)
-    UserInputService.InputChanged:Connect(function(i)
-        if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
-            closeAllDropdowns()
-            local d = i.Position - dragStart
-            main.Position = UDim2.new(0, startPos.X+d.X, 0, startPos.Y+d.Y)
-        end
-    end)
-    UserInputService.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+
+    UserInputService.InputEnded:Connect(function(input)
+        if not dragging then return end
+        local t = input.UserInputType
+        if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
             dragging = false
         end
     end)
 
-    -- Mobile drag via touch — use sHdr.TouchPan so it ONLY fires on the header
-    if mobile then
-        local dragPosStart = nil
-        local mainPosStart = nil
-        sHdr.TouchPan:Connect(function(_, totalTranslation, _, state)
-            if state == Enum.UserInputState.Begin then
-                mainPosStart = main.AbsolutePosition
-            elseif state == Enum.UserInputState.Change and mainPosStart then
-                main.Position = UDim2.new(
-                    0, mainPosStart.X + totalTranslation.X,
-                    0, mainPosStart.Y + totalTranslation.Y
-                )
-            elseif state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel then
-                mainPosStart = nil
-            end
-        end)
-    end
+    RunService.RenderStepped:Connect(function()
+        if dragging then
+            local pos = UserInputService:GetMouseLocation() + relative + guiInsetOffset
+            main.Position = UDim2.fromOffset(pos.X, pos.Y)
+        end
+    end)
 
     -- Toggle keybind
     UserInputService.InputBegan:Connect(function(i,gpe)
