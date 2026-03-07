@@ -13,6 +13,19 @@ local HttpService      = game:GetService("HttpService")
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
+-- ══════════════════════════════════════════════════════════════
+-- MOBILE DETECTION & SCALE
+-- ══════════════════════════════════════════════════════════════
+local function isMobile()
+    return UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+end
+-- Returns a scale multiplier: 1.0 on PC, 1.35 on mobile
+local function uiScale()
+    return isMobile() and 1.35 or 1.0
+end
+-- Scale a pixel value
+local function px(n) return math.floor(n * uiScale()) end
+
 local flags         = {}
 local toggleSetters = {}
 local saveFolder    = "DevNgg"
@@ -281,6 +294,16 @@ function DevNgg:CreateWindow(config)
     pcall(function() sg.IgnoreGuiInset=true end)
     safeParent(sg)
 
+    -- Close dropdowns when touching outside on mobile
+    if isMobile() then
+        local touchClose = make("TextButton",{
+            Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",ZIndex=1,
+            AutoButtonColor=false,
+        },sg)
+        touchClose.MouseButton1Click:Connect(function() closeAllDropdowns() end)
+        touchClose.TouchTap:Connect(function() closeAllDropdowns() end)
+    end
+
     -- ── Loading bar ───────────────────────────────────────────
     -- Shown immediately (no delay), destroyed after ~1.5s
     local lf=make("Frame",{
@@ -314,7 +337,10 @@ function DevNgg:CreateWindow(config)
     },lf)
 
     -- ── Main window ────────────────────────────────────────────
-    local SW=175; local WW=610; local WH=420
+    local mobile = isMobile()
+    local SW = mobile and 145 or 175
+    local WW = mobile and math.min(math.floor(workspace.CurrentCamera.ViewportSize.X - 20), 520) or 610
+    local WH = mobile and math.min(math.floor(workspace.CurrentCamera.ViewportSize.Y - 60), 480) or 420
 
     local main=make("Frame",{
         Name="Main",Size=UDim2.new(0,WW,0,WH),
@@ -325,6 +351,11 @@ function DevNgg:CreateWindow(config)
     },sg)
     corner(main,12); stroke(main,C.BORDER,1,0.5)
     mainFrame=main
+
+    -- UIScale for whole window on mobile
+    if mobile then
+        make("UIScale",{Scale=0.95},main)
+    end
 
     -- Shadow
     make("ImageLabel",{
@@ -382,8 +413,9 @@ function DevNgg:CreateWindow(config)
     local sScroll=make("ScrollingFrame",{
         Size=UDim2.new(1,0,1,-113),Position=UDim2.new(0,0,0,77),
         BackgroundTransparency=1,BorderSizePixel=0,
-        ScrollBarThickness=2,ScrollBarImageColor3=C.BORDER,
+        ScrollBarThickness=mobile and 4 or 2,ScrollBarImageColor3=C.ACCENT,
         CanvasSize=UDim2.new(0,0,0,0),AutomaticCanvasSize=Enum.AutomaticSize.Y,
+        ElasticBehavior=Enum.ElasticBehavior.Always,
         ZIndex=4,
     },side); pad(sScroll,8,8,0,0); listL(sScroll,2)
 
@@ -463,22 +495,35 @@ function DevNgg:CreateWindow(config)
         BackgroundTransparency=1,ClipsDescendants=true,ZIndex=2,
     },cPanel)
 
-    -- ── Drag ──────────────────────────────────────────────────
+    -- ── Drag (mouse + touch) ──────────────────────────────────
     local dragging,dragStart,startPos
+    local function startDrag(pos)
+        dragging=true; dragStart=pos; startPos=main.AbsolutePosition
+    end
+    local function updateDrag(pos)
+        if dragging then
+            closeAllDropdowns()
+            local d=pos-dragStart
+            main.Position=UDim2.new(0,startPos.X+d.X,0,startPos.Y+d.Y)
+        end
+    end
+    local function endDrag() dragging=false end
+
     sHdr.InputBegan:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseButton1 then
-            dragging=true; dragStart=i.Position; startPos=main.AbsolutePosition
+        if i.UserInputType==Enum.UserInputType.MouseButton1
+        or i.UserInputType==Enum.UserInputType.Touch then
+            startDrag(i.Position)
         end
     end)
     UserInputService.InputChanged:Connect(function(i)
-        if dragging and i.UserInputType==Enum.UserInputType.MouseMovement then
-            closeAllDropdowns()
-            local d=i.Position-dragStart
-            main.Position=UDim2.new(0,startPos.X+d.X,0,startPos.Y+d.Y)
+        if i.UserInputType==Enum.UserInputType.MouseMovement
+        or i.UserInputType==Enum.UserInputType.Touch then
+            updateDrag(i.Position)
         end
     end)
     UserInputService.InputEnded:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false end
+        if i.UserInputType==Enum.UserInputType.MouseButton1
+        or i.UserInputType==Enum.UserInputType.Touch then endDrag() end
     end)
 
     -- Toggle keybind
@@ -571,12 +616,14 @@ function DevNgg:CreateWindow(config)
     function Window:CreateTab(name,_icon)
         tabCount+=1; local idx=tabCount
 
-        -- Sidebar button
+        -- Sidebar button (taller on mobile for easier tapping)
+        local sBtnH = mobile and 44 or 36
+        local sBtnTS = mobile and 13 or 12
         local sBtn=make("TextButton",{
-            Name=name,Size=UDim2.new(1,-14,0,36),Position=UDim2.new(0,7,0,0),
+            Name=name,Size=UDim2.new(1,-14,0,sBtnH),Position=UDim2.new(0,7,0,0),
             BackgroundColor3=C.TAB_ON_BG,BackgroundTransparency=1,
             BorderSizePixel=0,Text="  "..name,
-            TextColor3=C.TAB_OFF,TextSize=12,Font=F.HEAD,
+            TextColor3=C.TAB_OFF,TextSize=sBtnTS,Font=F.HEAD,
             AutoButtonColor=false,TextXAlignment=Enum.TextXAlignment.Left,
             LayoutOrder=idx,ZIndex=5,
         },sScroll); corner(sBtn,7)
@@ -598,8 +645,9 @@ function DevNgg:CreateWindow(config)
         -- Content scroll
         local tSF=make("ScrollingFrame",{
             Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,BorderSizePixel=0,
-            ScrollBarThickness=3,ScrollBarImageColor3=C.BORDER,
+            ScrollBarThickness=mobile and 5 or 3,ScrollBarImageColor3=C.ACCENT,
             CanvasSize=UDim2.new(0,0,0,0),AutomaticCanvasSize=Enum.AutomaticSize.Y,
+            ElasticBehavior=Enum.ElasticBehavior.Always,
             Visible=false,ZIndex=2,
         },cClip)
         local tLL=make("UIListLayout",{
@@ -698,8 +746,17 @@ function DevNgg:CreateWindow(config)
         function Tab:CreateToggle(cfg)
             local flag=cfg.Flag; local enabled=cfg.CurrentValue or false
 
+            local togH    = mobile and 58 or 48
+            local togTS   = mobile and 14 or 13
+            local pillW   = mobile and 50 or 40
+            local pillH   = mobile and 28 or 22
+            local knobS   = mobile and 20 or 16
+            local pillR   = mobile and 14 or 11
+            local pillOff = mobile and -(pillW/2+8) or -52
+            local knobOff = mobile and -(knobS/2) or -8
+
             local row=make("TextButton",{
-                Size=UDim2.new(1,0,0,48),BackgroundColor3=C.DARK,
+                Size=UDim2.new(1,0,0,togH),BackgroundColor3=C.DARK,
                 BackgroundTransparency=T.SURF,BorderSizePixel=0,Text="",AutoButtonColor=false,
             },content); corner(row,8)
             local rs=stroke(row,C.BORDER,1,0.5)
@@ -710,35 +767,36 @@ function DevNgg:CreateWindow(config)
             },row); corner(stripe,2)
 
             local lbl=make("TextLabel",{
-                Size=UDim2.new(1,-68,1,0),Position=UDim2.new(0,14,0,0),
+                Size=UDim2.new(1,-(pillW+28),1,0),Position=UDim2.new(0,14,0,0),
                 BackgroundTransparency=1,Text=cfg.Name or "Toggle",
-                TextColor3=C.TXT_B,TextSize=13,Font=F.BODY,
-                TextXAlignment=Enum.TextXAlignment.Left,
+                TextColor3=C.TXT_B,TextSize=togTS,Font=F.BODY,
+                TextXAlignment=Enum.TextXAlignment.Left,TextWrapped=true,
             },row)
 
             local pill=make("Frame",{
-                Size=UDim2.new(0,40,0,22),Position=UDim2.new(1,-52,0.5,-11),
+                Size=UDim2.new(0,pillW,0,pillH),Position=UDim2.new(1,pillOff,0.5,-(pillH/2)),
                 BackgroundColor3=C.TOG_OFF_BG,BorderSizePixel=0,
-            },row); corner(pill,11); stroke(pill,C.BORDER,1,0.4)
+            },row); corner(pill,pillR); stroke(pill,C.BORDER,1,0.4)
 
             local knob=make("Frame",{
-                Size=UDim2.new(0,16,0,16),Position=UDim2.new(0,3,0.5,-8),
+                Size=UDim2.new(0,knobS,0,knobS),Position=UDim2.new(0,3,0.5,knobOff),
                 BackgroundColor3=C.TOG_KNOB_OFF,BorderSizePixel=0,
-            },pill); corner(knob,8)
+            },pill); corner(knob,math.floor(knobS/2))
 
             local function setState(val,silent)
                 enabled=val
                 if flag then flags[flag]=val; if not silent then saveConfig() end end
+                local knobOnX  = pillW - knobS - 3
                 if val then
                     tw(pill,FAST,{BackgroundColor3=C.TOG_ON_BG})
-                    tw(knob,FAST,{Position=UDim2.new(0,21,0.5,-8),BackgroundColor3=C.TOG_ON})
+                    tw(knob,FAST,{Position=UDim2.new(0,knobOnX,0.5,knobOff),BackgroundColor3=C.TOG_ON})
                     tw(lbl,FAST,{TextColor3=C.TXT_A})
                     tw(stripe,FAST,{BackgroundTransparency=0})
                     tw(rs,FAST,{Color=C.ACCENT,Transparency=0.2})
                     tw(row,FAST,{BackgroundColor3=C.NAVY,BackgroundTransparency=T.SURF-0.08})
                 else
                     tw(pill,FAST,{BackgroundColor3=C.TOG_OFF_BG})
-                    tw(knob,FAST,{Position=UDim2.new(0,3,0.5,-8),BackgroundColor3=C.TOG_KNOB_OFF})
+                    tw(knob,FAST,{Position=UDim2.new(0,3,0.5,knobOff),BackgroundColor3=C.TOG_KNOB_OFF})
                     tw(lbl,FAST,{TextColor3=C.TXT_B})
                     tw(stripe,FAST,{BackgroundTransparency=1})
                     tw(rs,FAST,{Color=C.BORDER,Transparency=0.5})
@@ -759,11 +817,13 @@ function DevNgg:CreateWindow(config)
         end
 
         function Tab:CreateButton(cfg)
+            local btnH  = mobile and 54 or 44
+            local btnTS = mobile and 15 or 13
             local btn=make("TextButton",{
-                Size=UDim2.new(1,0,0,44),BackgroundColor3=C.DARK,
+                Size=UDim2.new(1,0,0,btnH),BackgroundColor3=C.DARK,
                 BackgroundTransparency=T.SURF,BorderSizePixel=0,
                 Text=cfg.Name or "Button",TextColor3=C.TXT_B,
-                TextSize=13,Font=F.HEAD,AutoButtonColor=false,
+                TextSize=btnTS,Font=F.HEAD,AutoButtonColor=false,
             },content); corner(btn,8)
             local bs=stroke(btn,C.BORDER,1,0.5)
             btn.MouseButton1Click:Connect(function()
@@ -786,18 +846,23 @@ function DevNgg:CreateWindow(config)
         end
 
         function Tab:CreateTextInput(cfg)
-            local w=make("Frame",{Size=UDim2.new(1,0,0,64),BackgroundTransparency=1,BorderSizePixel=0},content)
+            local inpBoxH = mobile and 52 or 40
+            local inpLblH = mobile and 20 or 16
+            local inpTS   = mobile and 14 or 13
+            local inpLTS  = mobile and 13 or 11
+            local inpTotalH = inpBoxH + inpLblH + 4
+            local w=make("Frame",{Size=UDim2.new(1,0,0,inpTotalH),BackgroundTransparency=1,BorderSizePixel=0},content)
             make("TextLabel",{
-                Size=UDim2.new(1,0,0,16),Position=UDim2.new(0,2,0,0),
+                Size=UDim2.new(1,0,0,inpLblH),Position=UDim2.new(0,2,0,0),
                 BackgroundTransparency=1,Text=cfg.Name or "Input",TextColor3=C.TXT_B,
-                TextSize=11,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Left,
+                TextSize=inpLTS,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Left,
             },w)
             local box=make("TextBox",{
-                Size=UDim2.new(1,0,0,40),Position=UDim2.new(0,0,0,20),
+                Size=UDim2.new(1,0,0,inpBoxH),Position=UDim2.new(0,0,0,inpLblH+2),
                 BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF,BorderSizePixel=0,
                 Text=cfg.Default or "",PlaceholderText=cfg.Placeholder or "Type here...",
                 TextColor3=C.TXT_A,PlaceholderColor3=C.TXT_C,
-                TextSize=13,Font=F.BODY,ClearTextOnFocus=false,
+                TextSize=inpTS,Font=F.BODY,ClearTextOnFocus=false,
             },w); corner(box,8)
             local bs=stroke(box,C.BORDER,1,0.5); pad(box,0,0,12,12)
             box.Focused:Connect(function()   tw(bs,FAST,{Color=C.BORDER_FOC,Transparency=0}) end)
@@ -960,37 +1025,60 @@ function DevNgg:CreateWindow(config)
         function Tab:CreateDropdown(cfg)
             local options=cfg.Options or {}; local selected=cfg.Default or ""; local isOpen=false
 
-            local w=make("Frame",{Size=UDim2.new(1,0,0,64),BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=false},content)
+            -- Mobile-aware sizes
+            local ddBtnH   = mobile and 52  or 40
+            local ddLblH   = mobile and 20  or 16
+            local ddLblTS  = mobile and 13  or 11
+            local ddBtnTS  = mobile and 14  or 12
+            local ddItemH  = mobile and 50  or 36
+            local ddItemTS = mobile and 14  or 12
+            local ddMaxH   = mobile and math.min(math.floor(workspace.CurrentCamera.ViewportSize.Y * 0.45), 320) or 200
+            local ddSBT    = mobile and 4   or 2  -- scrollbar thickness
+            local ddTotalH = ddBtnH + ddLblH + 4
+
+            local w=make("Frame",{Size=UDim2.new(1,0,0,ddTotalH),BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=false},content)
             make("TextLabel",{
-                Size=UDim2.new(1,0,0,16),Position=UDim2.new(0,2,0,0),
+                Size=UDim2.new(1,0,0,ddLblH),Position=UDim2.new(0,2,0,0),
                 BackgroundTransparency=1,Text=cfg.Name or "Dropdown",TextColor3=C.TXT_B,
-                TextSize=11,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Left,
+                TextSize=ddLblTS,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Left,
             },w)
             local btn=make("TextButton",{
-                Size=UDim2.new(1,0,0,40),Position=UDim2.new(0,0,0,20),
+                Size=UDim2.new(1,0,0,ddBtnH),Position=UDim2.new(0,0,0,ddLblH+2),
                 BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF,BorderSizePixel=0,
                 Text=selected~="" and selected or "Select...",
                 TextColor3=selected~="" and C.TXT_A or C.TXT_C,
-                TextSize=12,Font=F.BODY,AutoButtonColor=false,TextXAlignment=Enum.TextXAlignment.Left,
-            },w); corner(btn,8); local bs=stroke(btn,C.BORDER,1,0.5); pad(btn,0,0,12,30)
+                TextSize=ddBtnTS,Font=F.BODY,AutoButtonColor=false,TextXAlignment=Enum.TextXAlignment.Left,
+            },w); corner(btn,8); local bs=stroke(btn,C.BORDER,1,0.5); pad(btn,0,0,14,34)
 
             local arrow=make("TextLabel",{
-                Size=UDim2.new(0,24,1,0),Position=UDim2.new(1,-26,0,0),
-                BackgroundTransparency=1,Text="▾",TextColor3=C.TXT_C,TextSize=12,Font=F.HEAD,
+                Size=UDim2.new(0,30,1,0),Position=UDim2.new(1,-32,0,0),
+                BackgroundTransparency=1,Text="▾",TextColor3=C.TXT_C,
+                TextSize=mobile and 16 or 12,Font=F.HEAD,
             },btn)
 
+            -- Dropdown list parented to sg so it floats above everything
             local dl=make("Frame",{
-                BackgroundColor3=C.DARK,BackgroundTransparency=0.40,
-                BorderSizePixel=0,Visible=false,ZIndex=60,
-            },sg); corner(dl,8); stroke(dl,C.BORDER_FOC,1,0.3)
+                BackgroundColor3=C.DARK,BackgroundTransparency=0.05,
+                BorderSizePixel=0,Visible=false,ZIndex=60,ClipsDescendants=true,
+            },sg); corner(dl,10); stroke(dl,C.BORDER_FOC,1,0.2)
+
+            -- Semi-opaque backdrop for mobile so items are clearly readable
+            if mobile then
+                make("Frame",{
+                    Size=UDim2.new(1,0,1,0),BackgroundColor3=Color3.fromRGB(4,10,28),
+                    BackgroundTransparency=0.08,BorderSizePixel=0,ZIndex=60,
+                },dl)
+            end
 
             local dsf=make("ScrollingFrame",{
                 Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,BorderSizePixel=0,
-                ScrollBarThickness=2,ScrollBarImageColor3=C.BORDER,
-                CanvasSize=UDim2.new(0,0,0,0),AutomaticCanvasSize=Enum.AutomaticSize.Y,ZIndex=61,
+                ScrollBarThickness=ddSBT,ScrollBarImageColor3=C.ACCENT,
+                CanvasSize=UDim2.new(0,0,0,0),AutomaticCanvasSize=Enum.AutomaticSize.Y,
+                ZIndex=61,ScrollingDirection=Enum.ScrollingDirection.Y,
+                ElasticBehavior=Enum.ElasticBehavior.Always,
             },dl)
-            make("UIListLayout",{SortOrder=Enum.SortOrder.LayoutOrder,Padding=UDim.new(0,1)},dsf)
-            pad(dsf,4,4,0,0)
+            make("UIListLayout",{SortOrder=Enum.SortOrder.LayoutOrder,Padding=UDim.new(0,2)},dsf)
+            pad(dsf,6,6,0,0)
 
             local DD={}
             local function close2()
@@ -1005,52 +1093,79 @@ function DevNgg:CreateWindow(config)
                 end
                 if #options==0 then
                     make("TextLabel",{
-                        Size=UDim2.new(1,0,0,34),BackgroundTransparency=1,
-                        Text="  (empty)",TextColor3=C.TXT_C,TextSize=11,Font=F.LIGHT,
+                        Size=UDim2.new(1,0,0,ddItemH),BackgroundTransparency=1,
+                        Text="  (empty)",TextColor3=C.TXT_C,TextSize=ddItemTS,Font=F.LIGHT,
                         TextXAlignment=Enum.TextXAlignment.Left,ZIndex=62,
                     },dsf)
                 else
                     for i,opt in ipairs(options) do
                         local sel=opt==selected
                         local item=make("TextButton",{
-                            Size=UDim2.new(1,0,0,36),
-                            BackgroundColor3=C.DARK,BackgroundTransparency=0.40,BorderSizePixel=0,
-                            Text="  "..opt,TextColor3=sel and C.TXT_A or C.TXT_B,
-                            TextSize=12,Font=sel and F.HEAD or F.BODY,
+                            Size=UDim2.new(1,0,0,ddItemH),
+                            BackgroundColor3=sel and C.NAVY or C.DARK,
+                            BackgroundTransparency=sel and 0.2 or 0.35,
+                            BorderSizePixel=0,
+                            Text="   "..opt,TextColor3=sel and C.TXT_A or C.TXT_B,
+                            TextSize=ddItemTS,Font=sel and F.HEAD or F.BODY,
                             AutoButtonColor=false,TextXAlignment=Enum.TextXAlignment.Left,
                             LayoutOrder=i,ZIndex=62,
                         },dsf)
+                        -- Selected indicator bar
                         if sel then
                             local bar=make("Frame",{
-                                Size=UDim2.new(0,2,0,18),Position=UDim2.new(0,0,0.5,-9),
+                                Size=UDim2.new(0,3,0,mobile and 24 or 18),
+                                Position=UDim2.new(0,0,0.5,mobile and -12 or -9),
                                 BackgroundColor3=C.ACCENT,BorderSizePixel=0,ZIndex=63,
-                            },item); corner(bar,1)
+                            },item); corner(bar,2)
                         end
+                        -- Divider between items
+                        make("Frame",{
+                            Size=UDim2.new(1,-16,0,1),Position=UDim2.new(0,8,1,-1),
+                            BackgroundColor3=C.BORDER,BackgroundTransparency=0.7,BorderSizePixel=0,ZIndex=63,
+                        },item)
                         item.MouseEnter:Connect(function()
                             tw(item,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.1,TextColor3=C.TXT_A})
                         end)
                         item.MouseLeave:Connect(function()
-                            tw(item,FAST,{BackgroundColor3=C.DARK,BackgroundTransparency=0.12,TextColor3=sel and C.TXT_A or C.TXT_B})
+                            tw(item,FAST,{BackgroundColor3=sel and C.NAVY or C.DARK,BackgroundTransparency=sel and 0.2 or 0.35,TextColor3=sel and C.TXT_A or C.TXT_B})
                         end)
-                        item.MouseButton1Click:Connect(function()
+                        -- Both click and touch
+                        local function onSelect()
                             selected=opt; btn.Text=opt; btn.TextColor3=C.TXT_A; close2()
                             if cfg.Callback then cfg.Callback(opt) end
-                        end)
+                        end
+                        item.MouseButton1Click:Connect(onSelect)
+                        item.TouchTap:Connect(onSelect)
                     end
                 end
-                dl.Size=UDim2.new(0,btn.AbsoluteSize.X,0,math.min(math.max(#options,1)*36+8,200))
+                local listH = math.min(math.max(#options,1)*ddItemH + 12, ddMaxH)
+                dl.Size=UDim2.new(0,btn.AbsoluteSize.X,0,listH)
             end
 
-            btn.MouseButton1Click:Connect(function()
+            local function openDropdown()
                 if isOpen then close2() return end
                 closeAllDropdowns(); isOpen=true; registerDropdown(close2); refresh2()
                 local ap=btn.AbsolutePosition; local as=btn.AbsoluteSize
-                dl.Size=UDim2.new(0,as.X,0,math.min(math.max(#options,1)*36+8,200))
-                dl.Position=UDim2.new(0,ap.X,0,ap.Y+as.Y+4); dl.Visible=true
+                local listH = math.min(math.max(#options,1)*ddItemH + 12, ddMaxH)
+                -- Smart positioning: open down if space, else open up
+                local screenH = workspace.CurrentCamera.ViewportSize.Y
+                local spaceBelow = screenH - (ap.Y + as.Y + 4)
+                local posY
+                if spaceBelow >= listH or spaceBelow > screenH/2 then
+                    posY = ap.Y + as.Y + 4
+                else
+                    posY = math.max(ap.Y - listH - 4, 4)
+                end
+                dl.Size=UDim2.new(0,as.X,0,listH)
+                dl.Position=UDim2.new(0,ap.X,0,posY)
+                dl.Visible=true
                 tw(bs,FAST,{Color=C.BORDER_FOC,Transparency=0})
                 tw(btn,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.2})
                 arrow.Text="▴"
-            end)
+            end
+
+            btn.MouseButton1Click:Connect(openDropdown)
+            btn.TouchTap:Connect(openDropdown)
             btn.MouseEnter:Connect(function() tw(btn,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.2}) end)
             btn.MouseLeave:Connect(function()
                 if not isOpen then tw(btn,FAST,{BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF}) end
