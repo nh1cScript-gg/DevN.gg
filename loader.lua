@@ -358,15 +358,31 @@ function DevNgg:CreateWindow(config)
     -- ── Main window ────────────────────────────────────────────
     local mobile = isMobile()
     local vp     = workspace.CurrentCamera.ViewportSize
-    -- On mobile: compact layout — narrow sidebar, limited height so game stays visible
-    local SW = mobile and 68  or 175
-    local WW = mobile and math.min(math.floor(vp.X * 0.72), 260) or 610
-    local WH = mobile and math.min(math.floor(vp.Y * 0.44), 220) or 420
+    -- Detect landscape vs portrait on mobile
+    local isLandscape = mobile and (vp.X > vp.Y) or false
 
-    local mainPosX = mobile and (-WW/2) or (-WW/2)
-    local mainPosXS = mobile and 0.5 or 0.5
-    local mainPosY = mobile and (-WH/2 - 20) or (-WH/2)
-    local mainPosYS = mobile and 0.5 or 0.5
+    -- Landscape mobile: tall left-side panel like the original look
+    -- Portrait mobile: compact centered panel
+    local SW, WW, WH, mainPosXS, mainPosX, mainPosYS, mainPosY
+    if not mobile then
+        SW = 175; WW = 610; WH = 420
+        mainPosXS = 0.5; mainPosX = -WW/2
+        mainPosYS = 0.5; mainPosY = -WH/2
+    elseif isLandscape then
+        SW = 72
+        WW = math.min(math.floor(vp.X * 0.52), 420)
+        WH = math.min(math.floor(vp.Y * 0.88), math.floor(vp.Y - 20))
+        -- Left side, vertically centered
+        mainPosXS = 0; mainPosX = 10
+        mainPosYS = 0.5; mainPosY = -WH/2
+    else
+        -- Portrait: compact centered
+        SW = 68
+        WW = math.min(math.floor(vp.X * 0.72), 260)
+        WH = math.min(math.floor(vp.Y * 0.44), 220)
+        mainPosXS = 0.5; mainPosX = -WW/2
+        mainPosYS = 0.5; mainPosY = -WH/2 - 20
+    end
     local main=make("Frame",{
         Name="Main",Size=UDim2.new(0,WW,0,WH),
         Position=UDim2.new(mainPosXS,mainPosX,mainPosYS,mainPosY),
@@ -412,8 +428,8 @@ function DevNgg:CreateWindow(config)
     },main)
 
     -- Sidebar header (drag handle)
-    local sHdrH = mobile and 30 or 76
-    local sHdrTS = mobile and 11 or 28
+    local sHdrH = isLandscape and 44 or (mobile and 30 or 76)
+    local sHdrTS = isLandscape and 13 or (mobile and 11 or 28)
     local sHdr=make("Frame",{
         Size=UDim2.new(1,0,0,sHdrH),BackgroundColor3=C.HDR,
         BackgroundTransparency=T.HDR,BorderSizePixel=0,ZIndex=5,
@@ -434,7 +450,7 @@ function DevNgg:CreateWindow(config)
 
     -- Tab scroll
     local sScrollTop = mobile and (sHdrH+1) or 77
-    local sScrollBot = mobile and (sHdrH+30) or 113
+    local sScrollBot = isLandscape and (sHdrH+32) or (mobile and (sHdrH+30) or 113)
     local sScroll=make("ScrollingFrame",{
         Size=UDim2.new(1,0,1,-sScrollBot),Position=UDim2.new(0,0,0,sScrollTop),
         BackgroundTransparency=1,BorderSizePixel=0,
@@ -490,7 +506,7 @@ function DevNgg:CreateWindow(config)
     },main)
 
     -- Content header
-    local cHdrH = mobile and 28 or 48
+    local cHdrH = isLandscape and 36 or (mobile and 28 or 48)
     local cHdr=make("Frame",{
         Size=UDim2.new(1,0,0,cHdrH),BackgroundColor3=C.HDR,
         BackgroundTransparency=T.HDR,BorderSizePixel=0,ZIndex=3,
@@ -639,8 +655,9 @@ function DevNgg:CreateWindow(config)
 
     local function updateH()
         if not activeTab or minimized then return end
-        if mobile then return end -- mobile fills screen, no dynamic resize
-        local h=math.clamp(activeTab.ll.AbsoluteContentSize.Y+49+24,WH,580)
+        if mobile and not isLandscape then return end -- portrait: fixed size
+        local maxH = mobile and (WH) or 580
+        local h=math.clamp(activeTab.ll.AbsoluteContentSize.Y+49+24, mobile and WH or WH, maxH)
         tw(main,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{Size=UDim2.new(0,WW,0,h)})
     end
 
@@ -687,8 +704,8 @@ function DevNgg:CreateWindow(config)
         sFoot.Visible      = not minimized
         side.Visible       = not minimized
         if minimized then
-            local pillW = mobile and 220 or WW
-            local pillH = mobile and 52 or 48
+            local pillW = isLandscape and math.min(WW, 300) or (mobile and 220 or WW)
+            local pillH = mobile and 44 or 48
             -- pill: cPanel full width so title+buttons show
             cPanel.Size     = UDim2.new(1,0,1,0)
             cPanel.Position = UDim2.new(0,0,0,0)
@@ -718,8 +735,8 @@ function DevNgg:CreateWindow(config)
         tabCount+=1; local idx=tabCount
 
         -- Sidebar button
-        local sBtnH = mobile and 28 or 36
-        local sBtnTS = mobile and 9 or 12
+        local sBtnH = isLandscape and 34 or (mobile and 28 or 36)
+        local sBtnTS = isLandscape and 10 or (mobile and 9 or 12)
         local sBtn=make("TextButton",{
             Name=name,Size=UDim2.new(1,-10,0,sBtnH),Position=UDim2.new(0,5,0,0),
             BackgroundColor3=C.TAB_ON_BG,BackgroundTransparency=1,
