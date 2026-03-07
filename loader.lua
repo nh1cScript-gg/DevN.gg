@@ -345,10 +345,10 @@ function DevNgg:CreateWindow(config)
     -- ── Main window ────────────────────────────────────────────
     local mobile = isMobile()
     local vp     = workspace.CurrentCamera.ViewportSize
-    -- On mobile: use 72% width, 68% height so game is still visible
-    local SW = mobile and 100 or 175
-    local WW = mobile and math.floor(math.min(vp.X, vp.Y) * 0.92) or 610
-    local WH = mobile and math.floor(math.max(vp.X, vp.Y) * 0.60) or 420
+    -- On mobile: fixed compact size that works in portrait and landscape
+    local SW = mobile and 90  or 175
+    local WW = mobile and 340 or 610
+    local WH = mobile and 320 or 420
 
     local mainPosX = mobile and (-WW/2) or (-WW/2)
     local mainPosXS = mobile and 0.5 or 0.5
@@ -527,50 +527,48 @@ function DevNgg:CreateWindow(config)
     },cPanel)
 
     -- ── Drag (mouse + touch) ──────────────────────────────────
-    local dragging,dragStart,startPos
-    local function startDrag(pos)
-        dragging=true; dragStart=pos; startPos=main.AbsolutePosition
-    end
-    local function updateDrag(pos)
-        if dragging then
-            closeAllDropdowns()
-            local d=pos-dragStart
-            main.Position=UDim2.new(0,startPos.X+d.X,0,startPos.Y+d.Y)
-        end
-    end
-    local function endDrag() dragging=false end
+    local dragging   = false
+    local dragStart  = nil
+    local startPos   = nil
 
-    -- Track which touch input started on the header so we only drag that one
-    local dragTouchId = nil
-
+    -- PC drag via mouse
     sHdr.InputBegan:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseButton1 then
-            startDrag(i.Position)
-        elseif i.UserInputType==Enum.UserInputType.Touch then
-            -- Only start drag if no drag is active yet
-            if not dragging then
-                dragTouchId = i
-                startDrag(i.Position)
-            end
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging  = true
+            dragStart = i.Position
+            startPos  = main.AbsolutePosition
         end
     end)
     UserInputService.InputChanged:Connect(function(i)
-        if not dragging then return end
-        if i.UserInputType==Enum.UserInputType.MouseMovement then
-            updateDrag(i.Position)
-        elseif i.UserInputType==Enum.UserInputType.Touch and i==dragTouchId then
-            -- Only move window for the exact touch that started on the header
-            updateDrag(i.Position)
+        if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+            closeAllDropdowns()
+            local d = i.Position - dragStart
+            main.Position = UDim2.new(0, startPos.X+d.X, 0, startPos.Y+d.Y)
         end
     end)
     UserInputService.InputEnded:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseButton1 then
-            endDrag()
-        elseif i.UserInputType==Enum.UserInputType.Touch and i==dragTouchId then
-            endDrag()
-            dragTouchId = nil
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
         end
     end)
+
+    -- Mobile drag via touch — use sHdr.TouchPan so it ONLY fires on the header
+    if mobile then
+        local dragPosStart = nil
+        local mainPosStart = nil
+        sHdr.TouchPan:Connect(function(_, totalTranslation, _, state)
+            if state == Enum.UserInputState.Begin then
+                mainPosStart = main.AbsolutePosition
+            elseif state == Enum.UserInputState.Change and mainPosStart then
+                main.Position = UDim2.new(
+                    0, mainPosStart.X + totalTranslation.X,
+                    0, mainPosStart.Y + totalTranslation.Y
+                )
+            elseif state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel then
+                mainPosStart = nil
+            end
+        end)
+    end
 
     -- Toggle keybind
     UserInputService.InputBegan:Connect(function(i,gpe)
@@ -646,30 +644,25 @@ function DevNgg:CreateWindow(config)
     end
 
     local function doMinimize()
-        minimized=not minimized; closeAllDropdowns()
-        cClip.Visible=not minimized
-        sScroll.Visible=not minimized; sFoot.Visible=not minimized
-        side.Visible=not minimized
-        updateCPanelWidth()
+        minimized = not minimized
+        closeAllDropdowns()
+        -- Hide/show content areas
+        cClip.Visible   = not minimized
+        sScroll.Visible = not minimized
+        sFoot.Visible   = not minimized
+        side.Visible    = not minimized
         if minimized then
-            if mobile then
-                -- Collapse to a small pill: just title bar + buttons
-                local pillW = 180
-                local pillH = cHdrH
-                tw(main,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{Size=UDim2.new(0,pillW,0,pillH)})
-            else
-                tw(main,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{Size=UDim2.new(0,WW,0,48)})
-            end
+            -- Pill: full width of window, just the header bar tall
+            local pillH = mobile and 40 or 48
+            cPanel.Size     = UDim2.new(1,0,1,0)
+            cPanel.Position = UDim2.new(0,0,0,0)
+            tw(main,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{Size=UDim2.new(0,WW,0,pillH)})
         else
-            side.Visible=true
+            -- Restore
             updateCPanelWidth()
-            if mobile then
-                tw(main,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{Size=UDim2.new(0,WW,0,WH)})
-            else
-                updateH()
-            end
+            tw(main,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{Size=UDim2.new(0,WW,0,WH)})
         end
-        minBtn.Text=minimized and "+" or "−"
+        minBtn.Text = minimized and "+" or "−"
     end
     minBtn.MouseButton1Click:Connect(doMinimize)
     minBtn.TouchTap:Connect(doMinimize)
