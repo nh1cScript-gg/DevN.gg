@@ -294,14 +294,20 @@ function DevNgg:CreateWindow(config)
     pcall(function() sg.IgnoreGuiInset=true end)
     safeParent(sg)
 
-    -- Close dropdowns when touching outside on mobile
+    -- Close dropdowns when tapping outside: use UserInputService instead of overlay
+    -- (overlay blocks Roblox touch input — never use a fullscreen TextButton)
     if isMobile() then
-        local touchClose = make("TextButton",{
-            Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",ZIndex=1,
-            AutoButtonColor=false,
-        },sg)
-        touchClose.MouseButton1Click:Connect(function() closeAllDropdowns() end)
-        touchClose.TouchTap:Connect(function() closeAllDropdowns() end)
+        UserInputService.TouchTap:Connect(function(positions)
+            -- Only close if tap is outside the main window
+            local pos = positions[1]
+            if not pos then closeAllDropdowns() return end
+            local mp = main.AbsolutePosition
+            local ms = main.AbsoluteSize
+            local x, y = pos.X, pos.Y
+            if x < mp.X or x > mp.X + ms.X or y < mp.Y or y > mp.Y + ms.Y then
+                closeAllDropdowns()
+            end
+        end)
     end
 
     -- ── Loading bar ───────────────────────────────────────────
@@ -445,7 +451,17 @@ function DevNgg:CreateWindow(config)
         Name="Content",Size=UDim2.new(1,-SW,1,0),Position=UDim2.new(0,SW,0,0),
         BackgroundColor3=C.DARK,BackgroundTransparency=T.CONT,
         BorderSizePixel=0,ClipsDescendants=true,
-    },main); corner(cPanel,12)
+    },main); corner(cPanel, mobile and 8 or 12)
+    -- On mobile minimized, cPanel stretches full width since sidebar hides
+    local function updateCPanelWidth()
+        if minimized and mobile then
+            cPanel.Size=UDim2.new(1,0,1,0)
+            cPanel.Position=UDim2.new(0,0,0,0)
+        else
+            cPanel.Size=UDim2.new(1,-SW,1,0)
+            cPanel.Position=UDim2.new(0,SW,0,0)
+        end
+    end
 
     -- Cover content panel's top-left and bottom-left rounded corners
     -- Placed on main (sibling), matching DARK color
@@ -476,12 +492,18 @@ function DevNgg:CreateWindow(config)
         BackgroundColor3=C.BORDER,BackgroundTransparency=0.5,BorderSizePixel=0,ZIndex=4,
     },cHdr)
 
-    -- Window controls (close / minimise)
-    local function mkBtn(offX,sym,hcol)
+    -- Window controls (close / minimise) — bigger on mobile for touch
+    local btnSz  = mobile and 38 or 26
+    local btnTS  = mobile and 18 or 14
+    local btnGap = mobile and 10 or 6
+    local function mkBtn(idx,sym,hcol)
+        -- idx 1=close, 2=min — position from right edge
+        local offX = -(btnSz + (idx-1)*(btnSz+btnGap) + btnGap)
         local b=make("TextButton",{
-            Size=UDim2.new(0,26,0,26),Position=UDim2.new(1,offX,0.5,-13),
+            Size=UDim2.new(0,btnSz,0,btnSz),
+            Position=UDim2.new(1,offX,0.5,-btnSz/2),
             BackgroundColor3=C.NAVY,BackgroundTransparency=T.CTRL,
-            Text=sym,TextColor3=C.TXT_C,TextSize=14,Font=F.HEAD,
+            Text=sym,TextColor3=C.TXT_C,TextSize=btnTS,Font=F.HEAD,
             BorderSizePixel=0,AutoButtonColor=false,ZIndex=10,
         },cHdr); corner(b,5); stroke(b,C.BORDER,1,0.5)
         b.MouseEnter:Connect(function()
@@ -493,9 +515,11 @@ function DevNgg:CreateWindow(config)
         return b
     end
     local minimized=false
-    local closeBtn=mkBtn(-36,"×",C.RED)
-    local minBtn  =mkBtn(-68,"−",C.AMBER)
-    closeBtn.MouseButton1Click:Connect(function() DevNgg:SetVisibility(false) end)
+    local closeBtn=mkBtn(1,"×",C.RED)
+    local minBtn  =mkBtn(2,"−",C.AMBER)
+    local function doClose() DevNgg:SetVisibility(false) end
+    closeBtn.MouseButton1Click:Connect(doClose)
+    closeBtn.TouchTap:Connect(doClose)
 
     local cClip=make("Frame",{
         Size=UDim2.new(1,0,1,-(cHdrH+1)),Position=UDim2.new(0,0,0,cHdrH+1),
@@ -606,15 +630,37 @@ function DevNgg:CreateWindow(config)
         updateH()
     end
 
-    minBtn.MouseButton1Click:Connect(function()
+    local function doMinimize()
         minimized=not minimized; closeAllDropdowns()
         cClip.Visible=not minimized
         sScroll.Visible=not minimized; sFoot.Visible=not minimized
+        side.Visible=not minimized
+        updateCPanelWidth()
         if minimized then
-            tw(main,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{Size=UDim2.new(0,WW,0,48)})
-        else updateH() end
+            if mobile then
+                -- Collapse to a small pill: just title bar + buttons
+                local pillW = 180
+                local pillH = cHdrH
+                tw(main,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{Size=UDim2.new(0,pillW,0,pillH)})
+            else
+                tw(main,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{Size=UDim2.new(0,WW,0,48)})
+            end
+        else
+            side.Visible=true
+            updateCPanelWidth()
+            if mobile then
+                local vp2 = workspace.CurrentCamera.ViewportSize
+                local fullW = math.floor(vp2.X - 16)
+                local fullH = math.floor(vp2.Y - 80)
+                tw(main,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{Size=UDim2.new(0,fullW,0,fullH)})
+            else
+                updateH()
+            end
+        end
         minBtn.Text=minimized and "+" or "−"
-    end)
+    end
+    minBtn.MouseButton1Click:Connect(doMinimize)
+    minBtn.TouchTap:Connect(doMinimize)
 
     -- ══════════════════════════════════════════════════════════
     -- WINDOW OBJECT
