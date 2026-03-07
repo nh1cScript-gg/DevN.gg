@@ -493,14 +493,7 @@ function DevNgg:CreateWindow(config)
         TextSize=mobile and 13 or 15,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=4,
     },cHdr)
     -- Minimized title — shows "DevN.GG" when collapsed, hidden when expanded
-    local miniTitleLbl=make("TextLabel",{
-        Size=UDim2.new(1,0,1,0),Position=UDim2.new(0,0,0,0),
-        BackgroundTransparency=1,Text=winTitle,TextColor3=C.TXT_A,
-        TextSize=mobile and 18 or 18,Font=F.TITLE,
-        TextXAlignment=Enum.TextXAlignment.Center,
-        TextYAlignment=Enum.TextYAlignment.Center,
-        ZIndex=4,Visible=false,
-    },cHdr)
+
     make("Frame",{
         Size=UDim2.new(1,0,0,1),Position=UDim2.new(0,0,1,0),
         BackgroundColor3=C.BORDER,BackgroundTransparency=0.5,BorderSizePixel=0,ZIndex=4,
@@ -552,15 +545,19 @@ function DevNgg:CreateWindow(config)
         if sg.IgnoreGuiInset then guiInsetOffset = gs:GetGuiInset() end
     end)
 
-    sHdr.InputBegan:Connect(function(input, processed)
-        if processed then return end  -- don't steal game input
+    local function startDragFromInput(input, processed)
+        if processed then return end
         local t = input.UserInputType
         if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
             dragging = true
             relative = main.AbsolutePosition + main.AbsoluteSize * main.AnchorPoint
                        - UserInputService:GetMouseLocation()
         end
-    end)
+    end
+    -- sHdr = sidebar drag handle (visible when expanded)
+    sHdr.InputBegan:Connect(startDragFromInput)
+    -- cHdr = content header drag handle (visible when minimized as pill)
+    cHdr.InputBegan:Connect(startDragFromInput)
 
     UserInputService.InputEnded:Connect(function(input)
         if not dragging then return end
@@ -643,8 +640,23 @@ function DevNgg:CreateWindow(config)
         end
         tab.content.Visible=true; activeTab=tab
         tabTitleLbl.Text=tab.name
-        tabTitleLbl.Visible  = not minimized
-        miniTitleLbl.Visible = minimized
+        if minimized then
+            tabTitleLbl.Text = winTitle
+            tabTitleLbl.Size = UDim2.new(1,-90,1,0)
+            tabTitleLbl.Position = UDim2.new(0,14,0,0)
+            tabTitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+            tabTitleLbl.TextYAlignment = Enum.TextYAlignment.Center
+            tabTitleLbl.Font = F.TITLE
+            tabTitleLbl.TextSize = 18
+        else
+            tabTitleLbl.Text = activeTab and activeTab.name or ""
+            tabTitleLbl.Size = UDim2.new(1,-90,1,0)
+            tabTitleLbl.Position = UDim2.new(0,14,0,0)
+            tabTitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+            tabTitleLbl.TextYAlignment = Enum.TextYAlignment.Center
+            tabTitleLbl.Font = F.HEAD
+            tabTitleLbl.TextSize = mobile and 13 or 15
+        end
         tw(tab.btn,FAST,{
             BackgroundColor3=C.TAB_ON_BG,BackgroundTransparency=0,TextColor3=C.TAB_ON_FG,
         })
@@ -659,8 +671,6 @@ function DevNgg:CreateWindow(config)
         sScroll.Visible    = not minimized
         sFoot.Visible      = not minimized
         side.Visible       = not minimized
-        tabTitleLbl.Visible  = not minimized
-        miniTitleLbl.Visible = minimized
         if minimized then
             local pillW = mobile and 220 or WW
             local pillH = mobile and 52 or 48
