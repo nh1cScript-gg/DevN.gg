@@ -1,5 +1,5 @@
 -- ╔══════════════════════════════════════════════════════════════╗
--- ║           AniPixels Ultimate Auto Farm v8.0                 ║
+-- ║           AniPixels Ultimate Auto Farm v7.4                 ║
 -- ║     Dragon Balls + Unit Hunter + Auto Merge + Auto Raid + Safari ║
 -- ║           by Dev N                                           ║
 -- ╚══════════════════════════════════════════════════════════════╝
@@ -798,6 +798,39 @@ local function findMergeUnit(doodleInv, targetName)
     return nil
 end
 
+-- Find the Crushinator and return it + its ProximityPrompt
+local function findCrushinator()
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj.Name == "Crushinator" then
+            local prompt = obj:FindFirstChildOfClass("ProximityPrompt", true)
+            if not prompt then
+                local activate = obj:FindFirstChild("Activate")
+                if activate then prompt = activate:FindFirstChildOfClass("ProximityPrompt") end
+            end
+            return obj, prompt
+        end
+    end
+    return nil, nil
+end
+
+-- Teleport player on top of the Crushinator
+local function teleportToCrushinator()
+    local crushinator = findCrushinator()
+    if not crushinator then return false end
+    local hrp = getHumanoidRootPart()
+    if not hrp then return false end
+    local pos = nil
+    if crushinator:IsA("BasePart") then
+        pos = crushinator.Position
+    else
+        local bp = crushinator.PrimaryPart or crushinator:FindFirstChildWhichIsA("BasePart")
+        if bp then pos = bp.Position end
+    end
+    if not pos then return false end
+    hrp.CFrame = CFrame.new(pos + Vector3.new(0, 4, 0))
+    return true
+end
+
 local function performMerge()
     local doodleInv = LocalPlayer:FindFirstChild("DoodleInv")
     if not doodleInv then
@@ -805,26 +838,20 @@ local function performMerge()
         return
     end
 
-    -- Find the Crushinator — search workspace broadly in case Map structure differs
-    local crushinator = nil
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj.Name == "Crushinator" then crushinator = obj break end
-    end
+    -- Find the Crushinator
+    local crushinator, mergePrompt = findCrushinator()
     if not crushinator then
         DevNgg:Notify({ Title = "Merge Failed", Content = "Crushinator not found in workspace!", Duration = 3 })
         return
-    end
-
-    local mergePrompt = crushinator:FindFirstChildOfClass("ProximityPrompt", true)
-    if not mergePrompt then
-        -- Try searching Activate child
-        local activate = crushinator:FindFirstChild("Activate")
-        if activate then mergePrompt = activate:FindFirstChildOfClass("ProximityPrompt") end
     end
     if not mergePrompt then
         DevNgg:Notify({ Title = "Merge Failed", Content = "Merge ProximityPrompt not found!", Duration = 3 })
         return
     end
+
+    -- Teleport to Crushinator before merging
+    teleportToCrushinator()
+    task.wait(0.3)
 
     -- Find the unit to merge using fuzzy matching
     local unitEntry = findMergeUnit(doodleInv, mergeTargetUnit)
@@ -1132,9 +1159,23 @@ end
 
 local function startMergeLoop()
     mergeLoopThread = task.spawn(function()
+        -- Teleport to Crushinator immediately when merge is enabled
+        local ok = false
+        for _ = 1, 10 do
+            if teleportToCrushinator() then ok = true break end
+            task.wait(0.5)
+        end
+        if not ok then
+            DevNgg:Notify({ Title = "Merge", Content = "Crushinator not found — will retry each merge.", Duration = 3 })
+        else
+            DevNgg:Notify({ Title = "Merge", Content = "Teleported to Crushinator!", Duration = 3 })
+        end
         while autoMergeEnabled do
+            -- Re-teleport to Crushinator every merge cycle to stay in place
+            teleportToCrushinator()
+            task.wait(0.2)
             performMerge()
-            task.wait(1)
+            task.wait(0.5)
         end
     end)
 end
