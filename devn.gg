@@ -99,6 +99,28 @@ local function refreshWishDropdown()
     end
 end
 
+-- ── PvP ELO persistence ──────────────────────────────────────
+local function savePvpElo()
+    pcall(function()
+        if not isfolder("AniPixels") then makefolder("AniPixels") end
+        writefile(PVP_ELO_FILE, HttpService:JSONEncode({
+            elo = pvpElo, wins = pvpWins, losses = pvpLosses
+        }))
+    end)
+end
+local function loadPvpElo()
+    pcall(function()
+        if isfile and isfile(PVP_ELO_FILE) then
+            local data = HttpService:JSONDecode(readfile(PVP_ELO_FILE))
+            if data then
+                pvpElo    = data.elo     or 1000
+                pvpWins   = data.wins    or 0
+                pvpLosses = data.losses  or 0
+            end
+        end
+    end)
+end
+
 -- Merge
 local mergeTargetUnit  = ""
 local autoMergeEnabled = false
@@ -130,6 +152,18 @@ local autoRaidEnabled = false
 -- Anti AFK
 local antiAfkEnabled = false
 local antiAfkThread  = nil
+
+-- Auto PvP Battle + ELO
+local autoPvpEnabled     = false
+local pvpLoopThread      = nil
+local pvpElo             = 1000
+local pvpWins            = 0
+local pvpLosses          = 0
+local PVP_ELO_FILE       = "AniPixels/ELO.json"
+local autoAcceptBattles  = false
+local autoSummonPvp      = false
+local summonPvpThread    = nil
+local isBattleActive     = false  -- global guard: true while ANY battle is in progress
 
 -- Auto Safari
 local autoSafariEnabled   = false
@@ -282,6 +316,19 @@ end
 -- SECTION 6: REMOTES
 -- ══════════════════════════════════════════════════════════════
 local Events = ReplicatedStorage:WaitForChild("Events")
+
+-- ── GLOBAL BATTLE STATE TRACKER ──────────────────────────────
+-- ShowBattle AND BattleResult both fire to ALL clients — must filter by name
+Events.ShowBattle.OnClientEvent:Connect(function(_, name)
+    if name == Players.LocalPlayer.Name then
+        isBattleActive = true
+    end
+end)
+Events.BattleResult.OnClientEvent:Connect(function(name)
+    if name == Players.LocalPlayer.Name then
+        isBattleActive = false
+    end
+end)
 
 -- ══════════════════════════════════════════════════════════════
 -- SECTION 7: UNIT HELPER FUNCTIONS
@@ -1104,6 +1151,425 @@ local function startSafariLoop()
         end
     end)
 end
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION 14C: AUTO PVP BATTLE + ELO RANKING
+-- Targets confirmed from scanner:
+--   workspace.Map.PVP.Deco.EloLeaderboard.First/Second/Third  → Pets folder → Sparking units
+--   workspace.Map.PVP.Clones.Stone Clone                      → HumanoidRootPart.ProximityPrompt (Action=Clone)
+--   Real players with Sparking in DoodleInv
+-- Battle trigger: Events.RequestBattle:FireServer() + proximity nudge
+-- ══════════════════════════════════════════════════════════════
+
+-- ELO rating change (K=32 standard formula)
+local function calcEloChange(myElo, oppElo, won)
+    local K = 32
+    local expected = 1 / (1 + 10 ^ ((oppElo - myElo) / 400))
+    return math.floor(K * ((won and 1 or 0) - expected))
+end
+
+-- Get sparking units from a Folder/Model's Pets subfolder
+local function getPetsSparkingUnits(obj)
+    local sparking = {}
+    local pets = obj:FindFirstChild("Pets")
+    if not pets then return sparking end
+    for _, child in ipairs(pets:GetChildren()) do
+        if isSparking(child.Name) then
+            table.insert(sparking, child.Name)
+        end
+    end
+    return sparking
+end
+
+-- Get sparking units from a real player's DoodleInv
+local function getPlayerSparkingUnits(player)
+    local inv = player:FindFirstChild("DoodleInv")
+    if not inv then return {} end
+    local sparking = {}
+    for _, entry in ipairs(inv:GetChildren()) do
+        if entry:IsA("IntValue") and entry.Value > 0 and isSparking(entry.Name) then
+            table.insert(sparking, entry.Name)
+        end
+    end
+    return sparking
+end
+
+-- Scan ONLY ELO leaderboard display models and Stone Clones (no real players)
+-- Returns list of { hrp, sparking, label, prompt (optional) }
+local function scanAllPvpTargets()
+    local results = {}
+    local mapFolder = workspace:FindFirstChild("Map")
+    local pvpFolder = mapFolder and mapFolder:FindFirstChild("PVP")
+    if not pvpFolder then return results end
+
+    -- 1. EloLeaderboard: workspace.Map.PVP.Deco.EloLeaderboard.First/Second/Third
+    local deco = pvpFolder:FindFirstChild("Deco")
+    local eloBoard = deco and deco:FindFirstChild("EloLeaderboard")
+    if eloBoard then
+        for _, rankName in ipairs({"First", "Second", "Third"}) do
+            local rankFolder = eloBoard:FindFirstChild(rankName)
+            if rankFolder then
+                local sparking = getPetsSparkingUnits(rankFolder)
+                if #sparking > 0 then
+                    local hrp = rankFolder:FindFirstChild("HumanoidRootPart")
+                             or rankFolder:FindFirstChildWhichIsA("BasePart")
+                    if hrp then
+                        local rank = rankName == "First" and "#1" or rankName == "Second" and "#2" or "#3"
+                        table.insert(results, {
+                            hrp      = hrp,
+                            model    = rankFolder,  -- passed to RequestBattle:FireServer()
+                            sparking = sparking,
+                            label    = "ELO " .. rank .. " (" .. sparking[1] .. ")",
+                        })
+                    end
+                end
+            end
+        end
+    end
+
+    -- 2. Stone Clones: workspace.Map.PVP.Clones.*
+    -- Battle ALL clones regardless of units — they always give ELO
+    local clonesFolder = pvpFolder:FindFirstChild("Clones")
+    if clonesFolder then
+        for _, clone in ipairs(clonesFolder:GetChildren()) do
+            if clone.Name == "Stone Clones" then continue end -- skip the container
+            local hrp = clone:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local sparking = getPetsSparkingUnits(clone)
+                table.insert(results, {
+                    hrp      = hrp,
+                    model    = clone,
+                    sparking = #sparking > 0 and sparking or {"Unknown"},
+                    label    = clone.Name,
+                })
+            end
+        end
+    end
+
+    return results
+end
+
+-- Tier weight for sorting targets (higher = better)
+local function sparkingTierWeight(name)
+    if string.find(name, "Titan Sparking") then return 4
+    elseif string.find(name, "Mega Sparking")  then return 3
+    elseif string.find(name, "Giant Sparking") then return 2
+    elseif string.find(name, "Sparking")       then return 1
+    end
+    return 0
+end
+
+-- Scan real players in server — target ALL players, prioritize those with Sparking
+local function scanRealPlayerTargets()
+    local results = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+        local char = player.Character
+        if not char then continue end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then continue end
+
+        -- Read their units if possible, but don't require Sparking
+        local sparking = {}
+        local totalWeight = 0
+        local inv = player:FindFirstChild("DoodleInv")
+        if inv then
+            for _, item in ipairs(inv:GetChildren()) do
+                if isSparking(item.Name) and item.Value > 0 then
+                    table.insert(sparking, item.Name)
+                    totalWeight += sparkingTierWeight(item.Name) * item.Value
+                end
+            end
+            table.sort(sparking, function(a, b)
+                return sparkingTierWeight(a) > sparkingTierWeight(b)
+            end)
+        end
+
+        local label = #sparking > 0 and (player.Name .. " (" .. sparking[1] .. ")") or player.Name
+        table.insert(results, {
+            hrp      = hrp,
+            model    = char,
+            sparking = #sparking > 0 and sparking or {"Unknown"},
+            label    = label,
+            isPlayer = true,
+            player   = player,
+            weight   = totalWeight,
+        })
+    end
+    -- Sort: players with Sparking first, then rest
+    table.sort(results, function(a, b) return a.weight > b.weight end)
+    return results
+end
+
+-- Attempt a PvP battle against one target
+local function attemptPvpBattle(targetData)
+    local hrp      = targetData.hrp
+    local label    = targetData.label
+    local sparking = targetData.sparking
+    local model    = targetData.model
+    local isPlayer = targetData.isPlayer or false
+
+    if not hrp or not hrp.Parent then return false end
+    if not model or not model.Parent then return false end
+
+    local myHrp = getHumanoidRootPart()
+    if not myHrp then return false end
+
+    DevNgg:Notify({
+        Title   = isPlayer and ("👤 Challenging: " .. label) or ("⚔ Targeting: " .. label),
+        Content = isPlayer and "Sending battle request..." or "Teleporting to trigger BattleChat...",
+        Duration = 3,
+    })
+
+    -- Teleport on top of target
+    myHrp.CFrame = CFrame.new(hrp.Position + Vector3.new(0, 3, 0))
+    task.wait(0.5)
+
+    -- Listen for ShowBattle
+    local battleStarted = false
+    local showConn
+    showConn = Events.ShowBattle.OnClientEvent:Connect(function()
+        battleStarted = true
+        if showConn then showConn:Disconnect() showConn = nil end
+    end)
+
+    -- For real players: keep re-firing every 2s so popup reappears if dismissed
+    -- For NPCs: nudge every 0.3s
+    if isPlayer then
+        local waited = 0
+        while not battleStarted and waited < 30 do
+            pcall(function() Events.RequestBattle:FireServer(model) end)
+            task.wait(2)
+            waited += 2
+            myHrp = getHumanoidRootPart()
+            if myHrp and hrp.Parent then
+                myHrp.CFrame = CFrame.new(hrp.Position + Vector3.new(0, 3, 0))
+            end
+        end
+    else
+        local nudgeTime = 0
+        while not battleStarted and nudgeTime < 15 do
+            pcall(function() Events.RequestBattle:FireServer(model) end)
+            task.wait(0.3)
+            nudgeTime += 0.3
+            myHrp = getHumanoidRootPart()
+            if myHrp and hrp.Parent then
+                myHrp.CFrame = CFrame.new(hrp.Position + Vector3.new(0, 3, 0))
+            end
+        end
+    end
+    if showConn then showConn:Disconnect() showConn = nil end
+
+    if not battleStarted then
+        DevNgg:Notify({
+            Title   = isPlayer and "👤 No Response: " .. label or "⚔ No Battle: " .. label,
+            Content = isPlayer and "Player didn't accept — skipping." or "Could not trigger — skipping.",
+            Duration = 3,
+        })
+        return false
+    end
+
+    DevNgg:Notify({
+        Title   = "⚔ Battle Started!",
+        Content = label .. " — waiting for result...",
+        Duration = 3,
+    })
+
+    -- Wait for BattleResult + PVPResult simultaneously
+    local result      = nil
+    local eloChange   = nil
+    local newEloScore = nil
+
+    local resultConn, pvpConn
+    resultConn = Events.BattleResult.OnClientEvent:Connect(function(char, res)
+        if char == LocalPlayer.Character then
+            result = res
+            if resultConn then resultConn:Disconnect() resultConn = nil end
+        end
+    end)
+    pvpConn = Events.PVPResult.OnClientEvent:Connect(function(change, newScore)
+        eloChange   = change
+        newEloScore = newScore
+        if pvpConn then pvpConn:Disconnect() pvpConn = nil end
+    end)
+
+    local elapsed = 0
+    while result == nil and elapsed < 90 do
+        task.wait(0.5)
+        elapsed += 0.5
+    end
+    if resultConn then resultConn:Disconnect() resultConn = nil end
+    if pvpConn    then pvpConn:Disconnect()    pvpConn    = nil end
+
+    -- Use server ELO if received, else fall back to local calc
+    local won = result == "Won"
+    if newEloScore then
+        pvpElo = newEloScore
+    else
+        local change = calcEloChange(pvpElo, 1000, won)
+        pvpElo = math.max(0, pvpElo + change)
+        eloChange = change
+    end
+
+    if result == nil then
+        DevNgg:Notify({
+            Title   = "⚔ Battle Timeout",
+            Content = label .. " — no result received.",
+            Duration = 3,
+        })
+    elseif won then
+        pvpWins += 1
+        local changeStr = eloChange and ("+" .. eloChange) or "+?"
+        local reward = sparking[1]
+        DevNgg:Notify({
+            Title   = "⚔ WIN! " .. changeStr .. " ELO",
+            Content = "Beat " .. label .. " | Got: " .. reward .. " | ELO: " .. pvpElo,
+            Duration = 6,
+        })
+    else
+        pvpLosses += 1
+        local changeStr = eloChange and (tostring(eloChange)) or "-?"
+        DevNgg:Notify({
+            Title   = "⚔ Lost " .. changeStr .. " ELO",
+            Content = "Lost to " .. label .. " | ELO: " .. pvpElo,
+            Duration = 4,
+        })
+    end
+
+    savePvpElo()
+    return true
+end
+
+local function startPvpLoop()
+    if pvpLoopThread then task.cancel(pvpLoopThread) pvpLoopThread = nil end
+    pvpLoopThread = task.spawn(function()
+        task.wait(2)
+        while autoPvpEnabled do
+            -- Real players FIRST (ELO gain), then Stone Clones
+            local playerTargets = scanRealPlayerTargets()
+            local npcTargets    = scanAllPvpTargets()
+            local allTargets    = {}
+            for _, t in ipairs(playerTargets) do table.insert(allTargets, t) end
+            for _, t in ipairs(npcTargets)    do table.insert(allTargets, t) end
+
+            if #allTargets > 0 then
+                DevNgg:Notify({
+                    Title   = "⚔ PvP: " .. #allTargets .. " target(s)",
+                    Content = #playerTargets .. " players | " .. #npcTargets .. " NPCs",
+                    Duration = 3,
+                })
+                for _, t in ipairs(allTargets) do
+                    if not autoPvpEnabled then break end
+                    attemptPvpBattle(t)
+                    task.wait(3)
+                end
+            else
+                DevNgg:Notify({
+                    Title   = "PvP: No Targets",
+                    Content = "No players or clones found. Are you in the PVP map?",
+                    Duration = 4,
+                })
+                task.wait(10)
+            end
+            task.wait(5)
+        end
+    end)
+end
+
+local function stopPvpLoop()
+    if pvpLoopThread then task.cancel(pvpLoopThread) pvpLoopThread = nil end
+end
+
+-- ══════════════════════════════════════════════════════════════
+-- AUTO SUMMON PVP — uses game's own matchmaking via RemotePVP
+-- Fastest ELO farming: no target scanning, no player hunting
+-- Just fire RemotePVP → game finds opponent → battle → repeat
+-- ══════════════════════════════════════════════════════════════
+local function startSummonPvpLoop()
+    if summonPvpThread then task.cancel(summonPvpThread) summonPvpThread = nil end
+    summonPvpThread = task.spawn(function()
+        local myName = Players.LocalPlayer.Name
+
+        while autoSummonPvp do
+
+            -- ── PHASE 1: Keep firing RemotePVP until ShowBattle fires with OUR name ──
+            local battleStarted = false
+            local showConn = Events.ShowBattle.OnClientEvent:Connect(function(_, name)
+                if name == myName then battleStarted = true end
+            end)
+
+            while not battleStarted and autoSummonPvp do
+                pcall(function() Events.RemotePVP:FireServer() end)
+                task.wait(0.5)
+            end
+            showConn:Disconnect()
+
+            if not autoSummonPvp then break end
+
+            -- ── PHASE 2: Battle is running — wait for BattleResult with OUR name ──
+            -- Do NOT fire RemotePVP at all until this fires
+            local battleDone  = false
+            local eloChange   = nil
+            local newEloScore = nil
+            local result      = nil
+
+            local resultConn = Events.BattleResult.OnClientEvent:Connect(function(name)
+                if name == myName then battleDone = true end
+            end)
+            local pvpConn = Events.PVPResult.OnClientEvent:Connect(function(change, score)
+                eloChange   = change
+                newEloScore = score
+                result      = change >= 0 and "Won" or "Lost"
+            end)
+
+            -- Wait up to 2 minutes for battle to finish
+            local t = 0
+            while not battleDone and t < 120 and autoSummonPvp do
+                task.wait(0.3)
+                t += 0.3
+            end
+            resultConn:Disconnect()
+
+            -- Give PVPResult up to 3s to arrive after BattleResult
+            t = 0
+            while result == nil and t < 3 and autoSummonPvp do
+                task.wait(0.2)
+                t += 0.2
+            end
+            pvpConn:Disconnect()
+
+            -- ── PHASE 3: Battle done — notify and re-queue ──
+            if newEloScore then pvpElo = newEloScore end
+
+            if result == "Won" then
+                pvpWins += 1
+                DevNgg:Notify({
+                    Title   = "⚡ WIN! +" .. (eloChange or "?") .. " ELO",
+                    Content = "ELO: " .. pvpElo .. " | W:" .. pvpWins .. " L:" .. pvpLosses,
+                    Duration = 3,
+                })
+            elseif result == "Lost" then
+                pvpLosses += 1
+                DevNgg:Notify({
+                    Title   = "⚡ Lost " .. (eloChange or "?") .. " ELO",
+                    Content = "ELO: " .. pvpElo .. " | W:" .. pvpWins .. " L:" .. pvpLosses,
+                    Duration = 3,
+                })
+            end
+
+            pcall(savePvpElo)
+            -- Short pause then loop back to PHASE 1 which re-queues immediately
+            task.wait(0.5)
+        end
+    end)
+end
+
+
+local function stopSummonPvpLoop()
+    if summonPvpThread then task.cancel(summonPvpThread) summonPvpThread = nil end
+end
+
+-- ══════════════════════════════════════════════════════════════
 -- Dragon Ball: event-driven + lightweight fallback poll
 -- ══════════════════════════════════════════════════════════════
 
@@ -1889,6 +2355,28 @@ SafariTab:CreateToggle({
     end,
 })
 -- ══════════════════════════════════════════════════════════════
+-- SECTION 21C: UI — TAB: PvP Battle
+-- ══════════════════════════════════════════════════════════════
+local PvpTab = Window:CreateTab("PvP Battle", nil)
+
+PvpTab:CreateSection("Auto Summon PVP")
+
+PvpTab:CreateToggle({
+    Name         = "⚡ Auto Summon PVP",
+    CurrentValue = false,
+    Flag         = "AutoSummonPvp",
+    Callback     = function(enabled)
+        autoSummonPvp = enabled
+        if enabled then
+            startSummonPvpLoop()
+            DevNgg:Notify({ Title = "⚡ Auto Summon PVP — ON", Content = "Farming ELO!", Duration = 3 })
+        else
+            stopSummonPvpLoop()
+            DevNgg:Notify({ Title = "⚡ Auto Summon PVP — OFF", Content = "ELO: " .. pvpElo .. " | W:" .. pvpWins .. " L:" .. pvpLosses, Duration = 3 })
+        end
+    end,
+})
+
 local SettingsTab = Window:CreateTab("Settings", nil)
 
 SettingsTab:CreateSection("Config Management")
@@ -2102,6 +2590,59 @@ if #wishTargets > 0 then
         Duration = 4,
     })
 end
+
+-- Load saved ELO data
+loadPvpElo()
+if pvpWins + pvpLosses > 0 then
+    DevNgg:Notify({
+        Title   = "PvP ELO Restored: " .. pvpElo,
+        Content = "Wins: " .. pvpWins .. " | Losses: " .. pvpLosses,
+        Duration = 4,
+    })
+end
+
+-- ══════════════════════════════════════════════════════════════
+-- AUTO BATTLE CHAT ACCEPT (runs permanently)
+-- When a player accepts our RequestBattle, we get a BattleChat
+-- popup with a "Battle" button. Auto-click it immediately.
+-- From decompiled source: Battle() fires RequestBattle:FireServer(Char.Value)
+-- ══════════════════════════════════════════════════════════════
+task.spawn(function()
+    local ScreenGui = LocalPlayer.PlayerGui:WaitForChild("ScreenGui", 10)
+    if not ScreenGui then return end
+    local BattleChats = ScreenGui:WaitForChild("BattleChats", 10)
+    if not BattleChats then return end
+    local BattleChat = BattleChats:WaitForChild("BattleChat", 10)
+    if not BattleChat then return end
+
+    -- Watch for BattleChat becoming visible = someone accepted our request
+    BattleChat:GetPropertyChangedSignal("Visible"):Connect(function()
+        if not BattleChat.Visible then return end
+        if not autoPvpEnabled then return end
+        task.wait(0.05) -- tiny delay so Char.Value is set
+        -- Auto-fire the battle exactly as the Battle() function does
+        pcall(function()
+            Events.RequestBattle:FireServer(BattleChat.Char.Value)
+        end)
+        BattleChat.Visible = false
+    end)
+end)
+
+-- ══════════════════════════════════════════════════════════════
+-- AUTO ACCEPT INCOMING BATTLE REQUESTS (for alt account)
+-- When another player sends us a RequestBattle, auto-accept it
+-- Decompiled source: Battle button fires RequestBattle:FireServer(arg1.Character)
+-- ══════════════════════════════════════════════════════════════
+Events.RequestBattle.OnClientEvent:Connect(function(requester)
+    if not autoAcceptBattles then return end
+    if not requester then return end
+    local char = requester.Character
+    if not char then return end
+    task.wait(0.1)
+    pcall(function()
+        Events.RequestBattle:FireServer(char)
+    end)
+end)
 
 pcall(function()
     if not isfile("AniPixels/LastConfig.json") then return end
