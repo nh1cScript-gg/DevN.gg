@@ -163,7 +163,6 @@ local PVP_ELO_FILE       = "AniPixels/ELO.json"
 local autoAcceptBattles  = false
 local autoSummonPvp      = false
 local summonPvpThread    = nil
-local isBattleActive     = false  -- global guard: true while ANY battle is in progress
 
 -- Auto Safari
 local autoSafariEnabled   = false
@@ -316,19 +315,6 @@ end
 -- SECTION 6: REMOTES
 -- ══════════════════════════════════════════════════════════════
 local Events = ReplicatedStorage:WaitForChild("Events")
-
--- ── GLOBAL BATTLE STATE TRACKER ──────────────────────────────
--- ShowBattle AND BattleResult both fire to ALL clients — must filter by name
-Events.ShowBattle.OnClientEvent:Connect(function(_, name)
-    if name == Players.LocalPlayer.Name then
-        isBattleActive = true
-    end
-end)
-Events.BattleResult.OnClientEvent:Connect(function(name)
-    if name == Players.LocalPlayer.Name then
-        isBattleActive = false
-    end
-end)
 
 -- ══════════════════════════════════════════════════════════════
 -- SECTION 7: UNIT HELPER FUNCTIONS
@@ -1488,78 +1474,76 @@ end
 local function startSummonPvpLoop()
     if summonPvpThread then task.cancel(summonPvpThread) summonPvpThread = nil end
     summonPvpThread = task.spawn(function()
-        local myName = Players.LocalPlayer.Name
-
         while autoSummonPvp do
-
-            -- ── PHASE 1: Keep firing RemotePVP until ShowBattle fires with OUR name ──
-            local battleStarted = false
-            local showConn = Events.ShowBattle.OnClientEvent:Connect(function(_, name)
-                if name == myName then battleStarted = true end
-            end)
-
-            while not battleStarted and autoSummonPvp do
-                pcall(function() Events.RemotePVP:FireServer() end)
-                task.wait(0.5)
-            end
-            showConn:Disconnect()
-
-            if not autoSummonPvp then break end
-
-            -- ── PHASE 2: Battle is running — wait for BattleResult with OUR name ──
-            -- Do NOT fire RemotePVP at all until this fires
-            local battleDone  = false
+            local result      = nil
             local eloChange   = nil
             local newEloScore = nil
-            local result      = nil
+            local battleStarted = false
+            local showConn, pvpConn
 
-            local resultConn = Events.BattleResult.OnClientEvent:Connect(function(name)
-                if name == myName then battleDone = true end
+            -- Hook listeners BEFORE firing
+            -- ShowBattle args: timestamp, playerName, ... — only count if OUR name is in args
+            local localName = LocalPlayer.Name
+            showConn = Events.ShowBattle.OnClientEvent:Connect(function(_, name)
+                if name == localName then
+                    battleStarted = true
+                    if showConn then showConn:Disconnect() showConn = nil end
+                end
             end)
-            local pvpConn = Events.PVPResult.OnClientEvent:Connect(function(change, score)
+            pvpConn = Events.PVPResult.OnClientEvent:Connect(function(change, newScore)
                 eloChange   = change
-                newEloScore = score
+                newEloScore = newScore
                 result      = change >= 0 and "Won" or "Lost"
+                if pvpConn then pvpConn:Disconnect() pvpConn = nil end
+                -- If lost, immediately re-summon to queue next player
+                if change < 0 then
+                    task.wait(0.5)
+                    pcall(function() Events.RemotePVP:FireServer() end)
+                end
             end)
 
-            -- Wait up to 2 minutes for battle to finish
-            local t = 0
-            while not battleDone and t < 120 and autoSummonPvp do
-                task.wait(0.3)
-                t += 0.3
+            -- Keep firing until OUR match starts
+            local findElapsed = 0
+            while not battleStarted and findElapsed < 10 and autoSummonPvp do
+                pcall(function() Events.RemotePVP:FireServer() end)
+                task.wait(0.5)
+                findElapsed += 0.5
             end
-            resultConn:Disconnect()
+            if showConn then showConn:Disconnect() showConn = nil end
 
-            -- Give PVPResult up to 3s to arrive after BattleResult
-            t = 0
-            while result == nil and t < 3 and autoSummonPvp do
-                task.wait(0.2)
-                t += 0.2
+            if not battleStarted then
+                if pvpConn then pvpConn:Disconnect() pvpConn = nil end
+                task.wait(0.5)
+            else
+                -- Wait for PVPResult up to 90s
+                local elapsed = 0
+                while result == nil and elapsed < 90 and autoSummonPvp do
+                    task.wait(0.2)
+                    elapsed += 0.2
+                end
+                if pvpConn then pvpConn:Disconnect() pvpConn = nil end
+
+                if newEloScore then pvpElo = newEloScore end
+
+                if result == "Won" then
+                    pvpWins += 1
+                    DevNgg:Notify({
+                        Title   = "⚡ WIN! +" .. (eloChange or "?") .. " ELO",
+                        Content = "ELO: " .. pvpElo .. " | W:" .. pvpWins .. " L:" .. pvpLosses,
+                        Duration = 3,
+                    })
+                elseif result ~= nil then
+                    pvpLosses += 1
+                    DevNgg:Notify({
+                        Title   = "⚡ Lost " .. (eloChange or "?") .. " ELO",
+                        Content = "ELO: " .. pvpElo .. " | W:" .. pvpWins .. " L:" .. pvpLosses,
+                        Duration = 3,
+                    })
+                end
+
+                pcall(savePvpElo)
+                task.wait(0.3) -- short wait then re-summon
             end
-            pvpConn:Disconnect()
-
-            -- ── PHASE 3: Battle done — notify and re-queue ──
-            if newEloScore then pvpElo = newEloScore end
-
-            if result == "Won" then
-                pvpWins += 1
-                DevNgg:Notify({
-                    Title   = "⚡ WIN! +" .. (eloChange or "?") .. " ELO",
-                    Content = "ELO: " .. pvpElo .. " | W:" .. pvpWins .. " L:" .. pvpLosses,
-                    Duration = 3,
-                })
-            elseif result == "Lost" then
-                pvpLosses += 1
-                DevNgg:Notify({
-                    Title   = "⚡ Lost " .. (eloChange or "?") .. " ELO",
-                    Content = "ELO: " .. pvpElo .. " | W:" .. pvpWins .. " L:" .. pvpLosses,
-                    Duration = 3,
-                })
-            end
-
-            pcall(savePvpElo)
-            -- Short pause then loop back to PHASE 1 which re-queues immediately
-            task.wait(0.5)
         end
     end)
 end
