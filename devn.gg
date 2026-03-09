@@ -115,6 +115,10 @@ local PVP_ELO_FILE       = "AniPixels/ELO.json"
 local autoAcceptBattles  = false
 local autoSummonPvp      = false
 local summonPvpThread    = nil
+local autoTrialsEnabled  = false
+local trialsThread       = nil
+local trialsFloor        = 0
+local trialsWins         = 0
 
 local starterThreads = { WanoLuffy = nil, NaruKid = nil, GokBase = nil }
 local starterEnabled = { WanoLuffy = false, NaruKid = false, GokBase = false }
@@ -344,11 +348,22 @@ end
 -- ══════════════════════════════════════════════════════════════
 local dragonBallCache = {}
 
+-- isDragonBall: just checks if it looks like a dragon ball (for caching)
 local function isDragonBall(obj)
     return obj:IsA("Part")
         and obj.Name:match("^DragonBall%d$")
-        and obj:FindFirstChild("Attachment")
         and not obj:IsDescendantOf(ReplicatedStorage)
+end
+
+-- isBallCollectible: checks if ball has prompt (no prompt = Shenron already summoned, skip)
+local function isBallCollectible(ball)
+    if not ball or not ball.Parent then return false end
+    -- Check directly on ball
+    if ball:FindFirstChildOfClass("ProximityPrompt") then return true end
+    -- Check on Attachment
+    local attach = ball:FindFirstChild("Attachment")
+    if attach and attach:FindFirstChildOfClass("ProximityPrompt") then return true end
+    return false
 end
 
 workspace.DescendantAdded:Connect(function(obj)
@@ -370,15 +385,18 @@ end)
 local function getAllDragonBalls()
     local balls = {}
     for ball in pairs(dragonBallCache) do
-        if ball and ball.Parent then table.insert(balls, ball)
-        else dragonBallCache[ball] = nil end
+        if ball and ball.Parent and isBallCollectible(ball) then
+            table.insert(balls, ball)
+        else
+            dragonBallCache[ball] = nil
+        end
     end
     return balls
 end
 
 local function dragonBallsExist()
     for ball in pairs(dragonBallCache) do
-        if ball and ball.Parent then return true end
+        if ball and ball.Parent and isBallCollectible(ball) then return true end
         dragonBallCache[ball] = nil
     end
     return false
@@ -388,7 +406,7 @@ local function collectDragonBall(ball)
     local hrp = getHumanoidRootPart()
     if not hrp or not ball or not ball.Parent then return end
     hrp.CFrame = CFrame.new(ball.Position + Vector3.new(0, 3, 0))
-    task.wait(0.1)
+    task.wait(0.05)
     local prompt = ball:FindFirstChildOfClass("ProximityPrompt")
     if not prompt then
         local attach = ball:FindFirstChild("Attachment")
@@ -906,32 +924,41 @@ workspace.DescendantAdded:Connect(function(obj)
     if isDragonBall(obj) then task.wait(0.1) onDragonBallDetected() end
 end)
 
+local function rescanDragonBalls()
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if isDragonBall(obj) then dragonBallCache[obj] = true end
+    end
+end
+
 local function startCollectLoop()
     if collectLoopThread then task.cancel(collectLoopThread) collectLoopThread = nil end
     collectLoopThread = task.spawn(function()
-        task.wait(5)
+        task.wait(2)
         while dragonBallAutoCollect do
             if not isCollecting and not isHopping then
+                -- Always rescan workspace first so we never miss a ball
+                rescanDragonBalls()
                 if dragonBallsExist() then
                     onDragonBallDetected()
                 elseif dragonBallAutoHop then
+                    -- Scan 3 times with 2s gaps before hopping (balls may spawn mid-scan)
                     local found = false
                     for i = 1, 3 do
-                        DevNgg:Notify({ Title = "Scanning... " .. i .. "/3", Content = "Checking for Dragon Ball...", Duration = 2 })
+                        DevNgg:Notify({ Title = "Scanning... " .. i .. "/3", Content = "Checking for Dragon Balls...", Duration = 2 })
                         task.wait(2)
+                        rescanDragonBalls()
                         if dragonBallsExist() then found = true break end
                     end
                     if found then
                         onDragonBallDetected()
                     else
-                        DevNgg:Notify({ Title = "No Dragon Ball Found", Content = "Hopping to next server...", Duration = 3 })
-                        task.wait(1)
+                        DevNgg:Notify({ Title = "No Dragon Ball — Hopping", Content = "Jumping to next server...", Duration = 2 })
                         serverHop()
-                        task.wait(15)
+                        task.wait(10)
                     end
                 end
             end
-            task.wait(5)
+            task.wait(1)
         end
     end)
 end
@@ -1244,6 +1271,213 @@ local function stopPvpLoop()
     if pvpLoopThread then task.cancel(pvpLoopThread) pvpLoopThread=nil end
 end
 
+-- ══════════════════════════════════════════════════════════════
+-- AUTO TRIALS
+-- getgenv() persistence | smart movement | stuck detection
+-- ══════════════════════════════════════════════════════════════
+getgenv().AutoTrials = false
+
+local function getValidCoolers()
+    -- Returns all alive Metal Cooler models sorted by distance to player
+    local myHRP = getHumanoidRootPart()
+    local models = {}
+    for _, lc in ipairs(workspace:GetChildren()) do
+        if lc.Name == "LocalCoolers" then
+            for _, model in ipairs(lc:GetChildren()) do
+                if model.Name ~= "Metal Cooler" then continue end
+                local hrp = model:FindFirstChild("HumanoidRootPart")
+                if not hrp then continue end
+                -- Skip if humanoid is dead
+                local hum = model:FindFirstChildOfClass("Humanoid")
+                if hum and hum.Health <= 0 then continue end
+                local dist = myHRP and (hrp.Position - myHRP.Position).Magnitude or 0
+                table.insert(models, { model=model, hrp=hrp, dist=dist })
+            end
+        end
+    end
+    -- Sort closest first
+    table.sort(models, function(a, b) return a.dist < b.dist end)
+    return models
+end
+
+local function moveToTarget(npcPos)
+    local myHRP = getHumanoidRootPart()
+    if not myHRP then return end
+    local dist = (myHRP.Position - npcPos).Magnitude
+    if dist > 25 then
+        -- Far away: teleport once to 15 studs away
+        myHRP.CFrame = CFrame.new(npcPos + Vector3.new(15, 0, 0))
+        task.wait(0.3)
+    end
+    -- Always walk the final approach to trigger proximity
+    local h = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+    if h then h:MoveTo(npcPos) end
+end
+
+local trialsAutoConn = nil  -- watches ReplicatedStorage.State.Auto
+
+local function startTrialsLoop()
+    if trialsThread then task.cancel(trialsThread) trialsThread = nil end
+    getgenv().AutoTrials = true
+
+    -- Force game's own Auto flag ON and keep it on permanently
+    local StateAuto = game.ReplicatedStorage.State.Auto
+    StateAuto.Value = true
+    if trialsAutoConn then trialsAutoConn:Disconnect() end
+    trialsAutoConn = StateAuto.Changed:Connect(function()
+        if getgenv().AutoTrials and not StateAuto.Value then
+            StateAuto.Value = true  -- fight back if anything turns it off
+        end
+    end)
+
+    trialsThread = task.spawn(function()
+        local ScreenGui = LocalPlayer.PlayerGui:WaitForChild("ScreenGui")
+        local WinFrame  = ScreenGui:WaitForChild("TrialsMode"):WaitForChild("Win")
+        local FailFrame = ScreenGui:WaitForChild("TrialsMode"):WaitForChild("Fail")
+        trialsFloor = 0
+
+        -- Teleport to trials entrance and start
+        local myHRP = getHumanoidRootPart()
+        if myHRP then myHRP.CFrame = workspace.Teleports.TeleportParts.Trials.CFrame + Vector3.new(0,5,0) end
+        task.wait(1)
+        pcall(function() Events.TrialsMode:FireServer({Start=true}) end)
+        task.wait(1)
+        DevNgg:Notify({ Title="⚔ Trials Started!", Content="Farming waves...", Duration=3 })
+
+        while getgenv().AutoTrials do
+            -- Wait for valid coolers to exist
+            local targets = getValidCoolers()
+            local waited = 0
+            while #targets == 0 and waited < 15 and getgenv().AutoTrials do
+                task.wait(0.5); waited += 0.5
+                targets = getValidCoolers()
+            end
+            if #targets == 0 then task.wait(1) continue end
+
+            -- Fight each cooler this wave
+            for _, target in ipairs(targets) do
+                if not getgenv().AutoTrials then break end
+
+                local model = target.model
+                local hrp   = target.hrp
+                local npcPos = hrp.Position
+
+                -- Stuck detection: skip if model already gone
+                if not model.Parent or not hrp.Parent then continue end
+
+                -- STEP 1: Move away then approach to trigger BattleChat
+                local myHrp = getHumanoidRootPart()
+                if myHrp then myHrp.CFrame = CFrame.new(npcPos + Vector3.new(15, 0, 0)) end
+                task.wait(0.4)
+
+                -- STEP 2: Listen for battle start BEFORE walking in
+                local battleStarted = false
+                local showConn, guiConn
+
+                showConn = Events.ShowBattle.OnClientEvent:Connect(function(_, arg2)
+                    if tostring(arg2) == LocalPlayer.Name then
+                        battleStarted = true
+                        if showConn then showConn:Disconnect() showConn = nil end
+                    end
+                end)
+
+                guiConn = LocalPlayer.PlayerGui.DescendantAdded:Connect(function(child)
+                    if child.Name == "BattleChat" then
+                        battleStarted = true
+                        if guiConn then guiConn:Disconnect() guiConn = nil end
+                    end
+                end)
+
+                -- STEP 3: Walk toward cooler, retry every 1.5s if no battle
+                local stuckCount = 0
+                local elapsed = 0
+                while not battleStarted and elapsed < 12 and getgenv().AutoTrials do
+                    -- Check if cooler still valid
+                    if not model.Parent or not hrp.Parent then break end
+                    moveToTarget(npcPos)
+                    task.wait(1.5); elapsed += 1.5
+                    stuckCount += 1
+                    -- Stuck: reset approach
+                    if stuckCount >= 3 then
+                        stuckCount = 0
+                        myHrp = getHumanoidRootPart()
+                        if myHrp then myHrp.CFrame = CFrame.new(npcPos + Vector3.new(15,0,0)) end
+                        task.wait(0.4)
+                    end
+                end
+                if showConn then showConn:Disconnect() showConn = nil end
+                if guiConn then guiConn:Disconnect() guiConn = nil end
+
+                -- Skip this cooler if battle never started (already dead / wrong target)
+                if not battleStarted then
+                    DevNgg:Notify({ Title="⚠ Stuck — Skipping", Content="Battle did not start, rescanning...", Duration=2 })
+                    continue
+                end
+
+                -- STEP 4: Wait for battle result
+                local battleDone, showWin, showFail = false, false, false
+                local bConn, tConn
+
+                bConn = Events.BattleResult.OnClientEvent:Connect(function(charName, res)
+                    if tostring(charName) == LocalPlayer.Name then
+                        if res == "Won" then trialsWins += 1 end
+                        battleDone = true
+                        if bConn then bConn:Disconnect() bConn = nil end
+                    end
+                end)
+
+                tConn = Events.TrialsMode.OnClientEvent:Connect(function(arg1)
+                    if arg1.Type == "Update" then trialsFloor = arg1.Wave or trialsFloor end
+                    if arg1.HeartUpdate and arg1.Gained == false then
+                        battleDone = true
+                        if tConn then tConn:Disconnect() tConn = nil end
+                    end
+                    if arg1.ShowWin  then showWin=true;  battleDone=true; if tConn then tConn:Disconnect() tConn=nil end end
+                    if arg1.ShowFail then showFail=true; battleDone=true; if tConn then tConn:Disconnect() tConn=nil end end
+                end)
+
+                local t = 0
+                while not battleDone and t < 120 and getgenv().AutoTrials do task.wait(0.2); t+=0.2 end
+                if bConn then bConn:Disconnect() bConn=nil end
+                if tConn then tConn:Disconnect() tConn=nil end
+
+                -- STEP 5: Handle result
+                if showWin then
+                    DevNgg:Notify({ Title="🏆 Boss Floor "..trialsFloor.." Cleared!", Content="Wins: "..trialsWins.." | Continuing...", Duration=4 })
+                    pcall(function() WinFrame.Close.MouseButton1Click:Fire() end)
+                    task.wait(0.5)
+                    pcall(function() Events.TrialsMode:FireServer({Start=true}) end)
+                    task.wait(2)
+                    break
+                elseif showFail then
+                    DevNgg:Notify({ Title="💀 Failed — Floor "..trialsFloor, Content="Restarting...", Duration=3 })
+                    trialsFloor = 0
+                    pcall(function() FailFrame.Close.MouseButton1Click:Fire() end)
+                    task.wait(0.5)
+                    pcall(function() Events.TrialsMode:FireServer({Start=true}) end)
+                    task.wait(2)
+                    break
+                else
+                    DevNgg:Notify({ Title="⚔ Wave "..trialsFloor.." done!", Content="Wins: "..trialsWins, Duration=2 })
+                    -- Walk away to reset proximity for next cooler / next wave
+                    myHrp = getHumanoidRootPart()
+                    if myHrp and hrp.Parent then
+                        myHrp.CFrame = CFrame.new(npcPos + Vector3.new(15,0,0))
+                    end
+                    task.wait(0.5)
+                end
+            end
+        end
+    end)
+end
+
+local function stopTrialsLoop()
+    getgenv().AutoTrials = false
+    if trialsAutoConn then trialsAutoConn:Disconnect() trialsAutoConn = nil end
+    if trialsThread then task.cancel(trialsThread) trialsThread = nil end
+    -- Let the game turn Auto off naturally when user disables
+end
+
 -- AUTO SUMMON PVP — uses game's own matchmaking via RemotePVP
 local function startSummonPvpLoop()
     if summonPvpThread then task.cancel(summonPvpThread) summonPvpThread=nil end
@@ -1252,39 +1486,62 @@ local function startSummonPvpLoop()
             local result=nil; local eloChange=nil; local newEloScore=nil
             local battleStarted=false; local showConn, pvpConn
             local localName = LocalPlayer.Name
+
+            -- Hook listeners BEFORE firing
             showConn = Events.ShowBattle.OnClientEvent:Connect(function(_, name)
-                if name == localName then battleStarted=true; if showConn then showConn:Disconnect() showConn=nil end end
+                if name == localName then
+                    battleStarted=true
+                    if showConn then showConn:Disconnect() showConn=nil end
+                end
             end)
             pvpConn = Events.PVPResult.OnClientEvent:Connect(function(change, newScore)
-                eloChange=change; newEloScore=newScore; result=change>=0 and "Won" or "Lost"
+                eloChange=change; newEloScore=newScore
+                result=change>=0 and "Won" or "Lost"
                 if pvpConn then pvpConn:Disconnect() pvpConn=nil end
-                if change < 0 then task.wait(0.5); pcall(function() Events.RemotePVP:FireServer() end) end
+                -- Fire immediately when result is in — no waiting
+                task.spawn(function()
+                    task.wait(0.3)
+                    if autoSummonPvp then
+                        pcall(function() Events.RemotePVP:FireServer() end)
+                    end
+                end)
             end)
+
+            -- Fire ONCE to queue — never spam, spamming cancels current battle
+            pcall(function() Events.RemotePVP:FireServer() end)
+
+            -- Wait up to 15s for OUR battle to start
             local findElapsed = 0
-            while not battleStarted and findElapsed < 10 and autoSummonPvp do
-                pcall(function() Events.RemotePVP:FireServer() end)
-                task.wait(0.5); findElapsed += 0.5
+            while not battleStarted and findElapsed < 15 and autoSummonPvp do
+                task.wait(0.5)
+                findElapsed += 0.5
             end
             if showConn then showConn:Disconnect() showConn=nil end
+
             if not battleStarted then
+                -- No match found, try again
                 if pvpConn then pvpConn:Disconnect() pvpConn=nil end
-                task.wait(0.5)
+                task.wait(1)
             else
+                -- Battle started — wait for PVPResult (up to 90s)
                 local elapsed = 0
                 while result == nil and elapsed < 90 and autoSummonPvp do
                     task.wait(0.2); elapsed += 0.2
                 end
                 if pvpConn then pvpConn:Disconnect() pvpConn=nil end
                 if newEloScore then pvpElo = newEloScore end
+
                 if result == "Won" then
                     pvpWins += 1
                     DevNgg:Notify({ Title="⚡ WIN! +"..(eloChange or "?").." ELO", Content="ELO: "..pvpElo.." | W:"..pvpWins.." L:"..pvpLosses, Duration=3 })
+                    pcall(savePvpElo)
+                    task.wait(0.1)
                 elseif result ~= nil then
                     pvpLosses += 1
                     DevNgg:Notify({ Title="⚡ Lost "..(eloChange or "?").." ELO", Content="ELO: "..pvpElo.." | W:"..pvpWins.." L:"..pvpLosses, Duration=3 })
+                    pcall(savePvpElo)
+                    task.wait(0.1)
                 end
-                pcall(savePvpElo)
-                task.wait(0.3)
             end
         end
     end)
@@ -1822,6 +2079,26 @@ SafariTab:CreateToggle({
 -- ══════════════════════════════════════════════════════════════
 -- TAB 7: Settings
 -- ══════════════════════════════════════════════════════════════
+-- ══════════════════════════════════════════════════════════════
+-- TAB: Trials
+-- ══════════════════════════════════════════════════════════════
+local TrialsTab = Window:CreateTab("Trials", nil)
+TrialsTab:CreateSection("Auto Trials Farm")
+
+TrialsTab:CreateToggle({
+    Name="⚔ Auto Trials", CurrentValue=false, Flag="AutoTrials",
+    Callback=function(enabled)
+        autoTrialsEnabled = enabled
+        if enabled then
+            startTrialsLoop()
+            DevNgg:Notify({ Title="⚔ Auto Trials — ON", Content="Floor: "..trialsFloor.." | Wins: "..trialsWins, Duration=3 })
+        else
+            stopTrialsLoop()
+            DevNgg:Notify({ Title="⚔ Auto Trials — OFF", Content="Floor: "..trialsFloor.." | Wins: "..trialsWins, Duration=3 })
+        end
+    end,
+})
+
 -- ══════════════════════════════════════════════════════════════
 -- TAB: PvP Battle
 -- ══════════════════════════════════════════════════════════════
