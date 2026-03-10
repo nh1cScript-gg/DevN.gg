@@ -50,14 +50,20 @@ local isHopping             = false
 
 local collectLoopThread  = nil
 local mergeLoopThread    = nil
-local autoCampaignThread = nil
 local raidLoopThread     = nil
+local equipQuickSquad    = function() end  -- forward declared, defined in Raid tab section
+local dragonBallWebhook       = ""   -- webhook URL for DB notifications
+local webhookCooldown         = 30   -- minimum seconds between same-state webhooks
+local webhookLastSent         = 0    -- os.clock() of last webhook fire
+local webhookLastState        = nil  -- nil=unknown, true=balls present, false=none
+local webhookMonitorThread    = nil  -- background monitor loop
 local wishLoopThread     = nil
 
 local wishTargets      = {}
 local wishListDropdown = nil
 
-local WISH_FILE = "AniPixels/WishTargets.json"
+local WISH_FILE    = "AniPixels/WishTargets.json"
+local WEBHOOK_FILE = "AniPixels/Webhook.json"
 local function saveWishTargets()
     pcall(function()
         if not isfolder("AniPixels") then makefolder("AniPixels") end
@@ -71,6 +77,17 @@ local function loadWishTargets()
             if data and type(data.targets) == "table" then wishTargets = data.targets end
         end
     end)
+    -- Auto-load webhook URL — persists across server hops
+    pcall(function()
+        if isfile and isfile(WEBHOOK_FILE) then
+            local wdata = HttpService:JSONDecode(readfile(WEBHOOK_FILE))
+            if wdata and wdata.url and wdata.url ~= "" then
+                dragonBallWebhook = wdata.url
+                if wdata.cooldown then webhookCooldown = wdata.cooldown end
+                task.spawn(startWebhookMonitor)
+            end
+        end
+    end)
 end
 local function refreshWishDropdown()
     if wishListDropdown then
@@ -80,26 +97,21 @@ local function refreshWishDropdown()
     end
 end
 
-local mergeTargetUnit  = ""
-local autoMergeEnabled = false
+local mergeTargetUnit    = ""
+local autoMergeEnabled   = false
+local mergeRaidOnly      = false   -- when true, auto merge only targets raid boss units
+local MERGE_THRESHOLD    = 4       -- copies needed to trigger merge (default 4, smart=8)
+local INVENTORY_MAX      = 20      -- game cap
+local INVENTORY_SAFE     = 17      -- emergency merge trigger
+local MERGE_COOLDOWN     = 25      -- seconds between merge sessions
+local lastMergeTime      = 0       -- os.clock() of last merge
+local mergeQueue         = {}      -- batch queue: list of unit names to merge
+local isMerging          = false   -- true while a merge session is running
 
 local quickTeleportTarget   = ""
 local quickTeleportSparking = false
 
-local autoCampaignTargetUnits  = {}
-local autoCampaignTargetUnit   = ""
-local autoCampaignFindSparking = true
-local autoCampaignEnabled      = false
-local autoCampaignServerHop    = true
 
-local campaignListDropdown = nil
-local function refreshCampaignDropdown()
-    if campaignListDropdown then
-        local opts = #autoCampaignTargetUnits > 0 and autoCampaignTargetUnits or {"(empty)"}
-        campaignListDropdown:SetOptions(opts)
-        campaignListDropdown:SetSelected("")
-    end
-end
 
 local autoRaidEnabled = false
 local antiAfkEnabled  = false
@@ -137,76 +149,19 @@ local safariThread        = nil
 -- ══════════════════════════════════════════════════════════════
 -- VALID UNIT LIST
 -- ══════════════════════════════════════════════════════════════
-local VALID_UNITS = {
-    ["Aizen"]=true,["Akaza"]=true,["Aki"]=true,["Al"]=true,["All For One"]=true,
-    ["All Might"]=true,["Anbu"]=true,["Android 17"]=true,["Android 18"]=true,
-    ["Android 19"]=true,["Arima"]=true,["Armstrong"]=true,["Arthur"]=true,
-    ["Astto"]=true,["Awakened Mahito"]=true,["Baek Yonhoo"]=true,["Baraggan"]=true,
-    ["Beru"]=true,["Blackstar"]=true,["Boros"]=true,["Boruto (Timeskip)"]=true,
-    ["Broly (Super)"]=true,["Brook"]=true,["CandyVegito"]=true,["Carrot"]=true,
-    ["Cell Jr"]=true,["Cha Hae"]=true,["Chad"]=true,["Chakra Puppet"]=true,
-    ["Choji"]=true,["Chopper"]=true,["Chrollo"]=true,["Cooler Final Form"]=true,
-    ["CrazyDiamond"]=true,["Dabi"]=true,["Darkness Devil"]=true,["Death The Kid"]=true,
-    ["Denji"]=true,["Doppio"]=true,["Dr Gero"]=true,["Ed"]=true,["Escanor"]=true,
-    ["Eto"]=true,["Fat Janemba"]=true,["Final Form Muzan"]=true,["Frankie"]=true,
-    ["Franklin"]=true,["Frieren"]=true,["Frieza Final Form"]=true,
-    ["Fusion Zamasu (Corrupted)"]=true,["Future Gohan"]=true,["Future Trunks"]=true,
-    ["Future Trunks (Base)"]=true,["Giyu"]=true,["Gluttony"]=true,["Gogeta (Fat)"]=true,
-    ["Gogeta Blue"]=true,["Gohan (Super Saiyan 2)"]=true,["Gojo"]=true,
-    ["Gojo (Legs)"]=true,["Gojo (Shinjuku)"]=true,["Gok (Base)"]=true,
-    ["Goku (Super Saiyan)"]=true,["Goku Black (Rose)"]=true,["Goku SS3"]=true,
-    ["Golden Experience"]=true,["Golden Experience (Requiem)"]=true,["Gon"]=true,
-    ["Gon (End)"]=true,["Goots"]=true,["Granz"]=true,["Griff"]=true,["Grimmjow"]=true,
-    ["Grimmjow (Resurrecion)"]=true,["GunGirl"]=true,["Gyutaro"]=true,["HGreen"]=true,
-    ["Hakari"]=true,["Halibel"]=true,["Hanami"]=true,["HandStrong"]=true,
-    ["Heian Era Sukuna"]=true,["HermitPurple"]=true,["Hero of Hell"]=true,
-    ["Hideyoshi"]=true,["Higuruma"]=true,["Hinata"]=true,["Hinawa"]=true,
-    ["Hisoka"]=true,["Ichigo (VastoLorde)"]=true,["Ichigo Hollowfied"]=true,
-    ["Igris"]=true,["Illumi"]=true,["Imperfect Cell"]=true,["Ino"]=true,["Iris"]=true,
-    ["Iron"]=true,["Iruka"]=true,["Issei"]=true,["Itach"]=true,["Jimbei"]=true,
-    ["Jogo"]=true,["Jotaro"]=true,["JudgeSpirit"]=true,["Junpei"]=true,["Juuzou"]=true,
-    ["Kaido"]=true,["KaidoDragon"]=true,["Kakash"]=true,["Kaneki"]=true,
-    ["Kaneki-Kakuja"]=true,["Kashimo"]=true,["Katana Man"]=true,["Kiba"]=true,
-    ["Kid"]=true,["Kid Buu"]=true,["KidGaar"]=true,["Killer"]=true,["Killer Queen"]=true,
-    ["Killua"]=true,["Killua (Godspeed)"]=true,["King"]=true,["King Crimson"]=true,
-    ["Kira"]=true,["Kisuke"]=true,["Kokushibo"]=true,["Krillin"]=true,["Krona"]=true,
-    ["Kurapika"]=true,["Kusukabe"]=true,["Kyubey"]=true,["Kyuubi"]=true,["Law"]=true,
-    ["Leorio"]=true,["LingYao"]=true,["Lst"]=true,["LuBu"]=true,["Luff"]=true,
-    ["Luffy (Gear 4)"]=true,["Luffy (Gear 5)"]=true,["Madara Ten Tails"]=true,
-    ["Made In Heaven"]=true,["MagiciansRed"]=true,["Mahito"]=true,["Mahoraga"]=true,
-    ["Maka"]=true,["Maki"]=true,["Maki Zenin"]=true,["Makima"]=true,["Masked Tob"]=true,
-    ["Mechamaru"]=true,["Medusa"]=true,["Megumi"]=true,["Meliodas"]=true,
-    ["Might Guy (Ninth Gate)"]=true,["Miwa"]=true,["Mizuki"]=true,["Momo"]=true,
-    ["Monster Garou"]=true,["Nami"]=true,["Nanami"]=true,["Naru (Kid)"]=true,
-    ["Naru (Sign)"]=true,["Neji"]=true,["Nel"]=true,["Nnoitra"]=true,["Nobara"]=true,
-    ["Nobunaga"]=true,["Noolle"]=true,["Obito Ten Tails"]=true,["Okarun"]=true,
-    ["Orihime"]=true,["Owl"]=true,["Panda"]=true,["Perfect Cell"]=true,["Piccolo"]=true,
-    ["Pikkon"]=true,["Poseidon"]=true,["Power"]=true,["Pride"]=true,["PuppetGuy"]=true,
-    ["Purple Haze"]=true,["Queen"]=true,["RealDIO"]=true,["RealJojo"]=true,
-    ["Reinhard"]=true,["Rengoku"]=true,["Renji"]=true,["Rimuru"]=true,["Riza"]=true,
-    ["Rize"]=true,["Robin"]=true,["Rock Lee"]=true,["Roy"]=true,["Rukia"]=true,
-    ["Ryuma"]=true,["Saitama"]=true,["Sakur"]=true,["Sanji"]=true,["Sasaki"]=true,
-    ["Sasu"]=true,["Sasuke (Curse Mark 2)"]=true,["Scar"]=true,["Shadow DIO"]=true,
-    ["Shanks"]=true,["Shield Hero"]=true,["Shigaraki"]=true,["Shika"]=true,
-    ["Shino"]=true,["Shinobu"]=true,["Shinra"]=true,["Shizuku"]=true,
-    ["SilverChariot"]=true,["SilverChariot (Requiem)"]=true,["Soul"]=true,
-    ["SpearGirl"]=true,["StaffGirl"]=true,["Star Platinum"]=true,["Starrk"]=true,
-    ["Subaru"]=true,["Sukuna"]=true,["Sukuna (Shinjuku)"]=true,["Sung Jinwoo"]=true,
-    ["Super Gogeta"]=true,["Super Janemba"]=true,["Super Perfect Cell"]=true,
-    ["Super Vegito"]=true,["SwordGirl"]=true,["SwordGuy"]=true,["Takako"]=true,
-    ["Tamaki"]=true,["Tanjiro"]=true,["Tatsumaki"]=true,["Temari"]=true,
-    ["TenTen"]=true,["Tengen"]=true,["The World"]=true,["TheFool"]=true,["Thor"]=true,
-    ["TimeGirl"]=true,["Todo"]=true,["Toji"]=true,["Tokito"]=true,["Touka"]=true,
-    ["Trunks (Spirit Bomb Sword)"]=true,["Tsukiyama"]=true,["Turles"]=true,["Tusk"]=true,
-    ["Ulquiorra"]=true,["Ulquiorra (Murcielago)"]=true,["Ulquiorra (Segunda)"]=true,
-    ["Ulti"]=true,["Uraume"]=true,["Uryu"]=true,["Usopp"]=true,["Vegeta (Majin)"]=true,
-    ["Vegeta (Super Saiyan)"]=true,["Vegito Blue"]=true,["Wandering Soul"]=true,
-    ["Wano Luffy"]=true,["Wolf Beast"]=true,["WonderU"]=true,["Wrath"]=true,["X"]=true,
-    ["Yamato"]=true,["Yammy"]=true,["Yomi"]=true,["Yoogi"]=true,["Yoomi"]=true,
-    ["Yoono"]=true,["Yoriichi"]=true,["Yorozu"]=true,["Young Gojo"]=true,["Yuji"]=true,
-    ["Yuta"]=true,["Zeeno"]=true,["Zeeno23"]=true,["Zomarie"]=true,["Zoono"]=true,
-    ["Zoro"]=true,
-}
+-- VALID_UNITS: built dynamically from ReplicatedStorage.Doodles
+-- Used by Campaign, Safari, Merge — always up to date
+local VALID_UNITS = {}
+task.spawn(function()
+    local Doodles = ReplicatedStorage:WaitForChild("Doodles", 10)
+    if not Doodles then return end
+    for _, d in ipairs(Doodles:GetChildren()) do
+        VALID_UNITS[d.Name] = true
+    end
+    Doodles.ChildAdded:Connect(function(d) VALID_UNITS[d.Name] = true end)
+    Doodles.ChildRemoved:Connect(function(d) VALID_UNITS[d.Name] = nil end)
+end)
+
 
 local TIER_PREFIXES = {
     "Titan Sparking ", "Mega Sparking ", "Giant Sparking ", "Sparking ",
@@ -221,6 +176,19 @@ local RAID_BOSS_FOLDERS = {
     ["Boros"]=true, ["Fusion Zamasu (Corrupted)"]=true, ["Dio Over Heaven"]=true,
     ["Meliodas (Demon Form 2)"]=true, ["Mob"]=true, ["Aizen (Hogyoku)"]=true,
 }
+
+-- Check if a unit name (any tier) belongs to a raid boss character
+local function isRaidUnit(name)
+    -- Strip known tier prefixes to get bare name
+    local bare = name
+    for _, prefix in ipairs({"Titan Sparking ", "Mega Sparking ", "Giant Sparking ", "Sparking ", "Titan ", "Mega ", "Giant "}) do
+        if name:sub(1, #prefix) == prefix then
+            bare = name:sub(#prefix + 1)
+            break
+        end
+    end
+    return RAID_BOSS_FOLDERS[bare] == true
+end
 
 local function isRaidBoss(part)
     local petsFolder = part.Parent
@@ -366,18 +334,20 @@ local function isBallCollectible(ball)
     return false
 end
 
-workspace.DescendantAdded:Connect(function(obj)
+-- ChildAdded fires only for direct workspace children (Dragon Balls are top-level)
+-- DescendantAdded would fire for every particle/effect/model part = constant lag
+workspace.ChildAdded:Connect(function(obj)
     if isDragonBall(obj) then dragonBallCache[obj] = true end
 end)
 
-workspace.DescendantRemoving:Connect(function(obj)
+workspace.ChildRemoved:Connect(function(obj)
     dragonBallCache[obj] = nil
 end)
 
 task.spawn(function()
     task.wait(2)
-    for i, obj in ipairs(workspace:GetDescendants()) do
-        if i % 200 == 0 then task.wait() end
+    -- Scan only direct workspace children on init — not thousands of descendants
+    for _, obj in ipairs(workspace:GetChildren()) do
         if isDragonBall(obj) then dragonBallCache[obj] = true end
     end
 end)
@@ -415,10 +385,69 @@ local function collectDragonBall(ball)
     if prompt then fireproximityprompt(prompt) end
 end
 
+-- 12-hour time format e.g. "11:30 AM"
+local function getTime()
+    local h, m = tonumber(os.date("%H")), tonumber(os.date("%M"))
+    local suffix = h >= 12 and "PM" or "AM"
+    h = h % 12
+    if h == 0 then h = 12 end
+    return string.format("%d:%02d %s", h, m, suffix)
+end
+
+local function fireWebhook(embedTitle, embedColor, description)
+    if dragonBallWebhook == "" then return end
+    task.spawn(function()
+        pcall(function()
+            local body = HttpService:JSONEncode({
+                embeds = {{
+                    title       = embedTitle,
+                    color       = embedColor,
+                    description = description,
+                    footer      = { text = "AniPixels • Dragon Ball Tracker" },
+                    timestamp   = os.date("!%Y-%m-%dT%H:%M:%SZ"),
+                }}
+            })
+            local fn = request or (syn and syn.request) or http_request
+            if fn then fn({ Url=dragonBallWebhook, Method="POST", Headers={["Content-Type"]="application/json"}, Body=body }) end
+        end)
+    end)
+end
+
+local function startWebhookMonitor()
+    if webhookMonitorThread then task.cancel(webhookMonitorThread) end
+    webhookLastState = nil
+    webhookMonitorThread = task.spawn(function()
+        while dragonBallWebhook ~= "" do
+            local balls = getAllDragonBalls()
+            local hasBalls = #balls > 0
+            if hasBalls ~= webhookLastState then
+                webhookLastState = hasBalls
+                if hasBalls then
+                    fireWebhook("🐉 Dragon Ball", 16027660,
+                        "**User:** " .. LocalPlayer.Name .. " (@" .. LocalPlayer.Name .. ")\n\n" ..
+                        "🌟 **Ball:** " .. balls[1].Name .. "\n" ..
+                        "📍 **Server:** " .. tostring(game.JobId):sub(1,8) .. "...\n" ..
+                        "🕐 **Time:** " .. getTime()
+                    )
+                else
+                    fireWebhook("⚫ No Dragon Ball", 15158332,
+                        "**User:** " .. LocalPlayer.Name .. " (@" .. LocalPlayer.Name .. ")\n\n" ..
+                        "No Dragon Ball found in this server.\n" ..
+                        "🕐 **Time:** " .. getTime()
+                    )
+                    DevNgg:Notify({ Title="⚫ No Dragon Ball", Content="No Dragon Ball in this server.", Duration=4 })
+                end
+            end
+            task.wait(webhookCooldown)
+            if dragonBallWebhook == "" then break end
+        end
+    end)
+end
+
 local function collectAllDragonBalls()
     local balls = getAllDragonBalls()
     if #balls == 0 then
-        DevNgg:Notify({ Title = "Dragon Ball", Content = "No Dragon Balls found.", Duration = 3 })
+        DevNgg:Notify({ Title = "Dragon Ball", Content = "No Dragon Ball found.", Duration = 3 })
         if dragonBallAutoHop then task.spawn(serverHop) end
         return false
     end
@@ -431,6 +460,14 @@ local function collectAllDragonBalls()
     end
     while finished < total do task.wait(0.05) end
     DevNgg:Notify({ Title = "Collected", Content = total .. " Dragon Ball(s) picked up.", Duration = 4 })
+    -- Single webhook for the collect
+    fireWebhook("✨ Dragon Ball Collected", 16027660,
+        "**User:** " .. LocalPlayer.Name .. " (@" .. LocalPlayer.Name .. ")\n\n" ..
+        "🌟 **Ball:** " .. (balls[1] and balls[1].Name or "DragonBall") .. "\n" ..
+        "📍 **Server:** " .. tostring(game.JobId):sub(1,8) .. "...\n" ..
+        "🕐 **Time:** " .. getTime()
+    )
+    webhookLastState = false  -- ball is now gone, prevent monitor from firing a duplicate
     if dragonBallAutoHop then task.wait(0.5) task.spawn(serverHop) end
     return true
 end
@@ -460,7 +497,7 @@ local function serverHop(noCheck)
     if not noCheck then
         for _ = 1, 2 do
             if dragonBallsExist() then
-                DevNgg:Notify({ Title = "Dragon Balls Found!", Content = "Cancelling server hop.", Duration = 3 })
+                DevNgg:Notify({ Title = "Dragon Ball Found!", Content = "Cancelling server hop.", Duration = 3 })
                 if dragonBallAutoCollect then task.spawn(collectAllDragonBalls) end
                 return
             end
@@ -530,74 +567,6 @@ local function serverHop(noCheck)
     isHopping = false
 end
 
--- ══════════════════════════════════════════════════════════════
--- AUTO CAMPAIGN LOOP
--- ══════════════════════════════════════════════════════════════
-local function checkCampaignList()
-    local campaign = workspace:FindFirstChild("Campaign")
-    if not campaign then return nil, nil end
-    for _, unitName in ipairs(autoCampaignTargetUnits) do
-        local target = unitName:lower()
-        for _, part in ipairs(campaign:GetDescendants()) do
-            if not part:IsA("Part") then continue end
-            if not isValidUnit(part.Name) then continue end
-            if isRaidBoss(part) then continue end
-            if isPartInSafari(part) then continue end
-            if part.Name:lower():find(target, 1, true) then return part, "specific" end
-        end
-    end
-    if autoCampaignFindSparking then
-        for _, part in ipairs(campaign:GetDescendants()) do
-            if not part:IsA("Part") then continue end
-            if not isValidUnit(part.Name) then continue end
-            if isRaidBoss(part) then continue end
-            if isPartInSafari(part) then continue end
-            if isSparking(part.Name) then return part, "sparking" end
-        end
-    end
-    return nil, nil
-end
-
-local function startAutoCampaignLoop()
-    if autoCampaignThread then task.cancel(autoCampaignThread) autoCampaignThread = nil end
-    autoCampaignThread = task.spawn(function()
-        task.wait(2)
-        while autoCampaignEnabled do
-            local foundUnit, foundReason = checkCampaignList()
-            if foundUnit then
-                local landed = false
-                for attempt = 1, 5 do
-                    local hrp = getHumanoidRootPart()
-                    if hrp and foundUnit and foundUnit.Parent then
-                        teleportToPosition(foundUnit.Position)
-                        task.wait(0.4)
-                        local hrp2 = getHumanoidRootPart()
-                        if hrp2 and foundUnit.Parent and (hrp2.Position - foundUnit.Position).Magnitude < 30 then
-                            landed = true break
-                        end
-                    else
-                        task.wait(0.5)
-                    end
-                end
-                DevNgg:Notify({
-                    Title   = foundReason == "sparking" and "Sparking: " .. foundUnit.Name or "Found: " .. foundUnit.Name,
-                    Content = landed and "Teleported!" or "Found but teleport may have failed.",
-                    Duration = 5,
-                })
-                autoCampaignEnabled = false
-                pcall(function() Window:SetToggle("AutoCampaignEnabled", false) end)
-                return
-            elseif autoCampaignServerHop then
-                DevNgg:Notify({ Title = "Not Found", Content = "Checked " .. #autoCampaignTargetUnits .. " unit(s) — hopping...", Duration = 3 })
-                serverHop(true)
-                task.wait(12)
-            else
-                task.wait(2)
-            end
-            task.wait(0.3)
-        end
-    end)
-end
 
 -- ══════════════════════════════════════════════════════════════
 -- AUTO WISH
@@ -654,7 +623,22 @@ end
 -- ══════════════════════════════════════════════════════════════
 -- AUTO MERGE
 -- ══════════════════════════════════════════════════════════════
+local mergedThisSession = {}  -- tracks units merged this session to avoid re-teleporting
+
+local UNMERGEABLE_PREFIXES = {
+    "Titan Sparking ",  -- highest tier, cannot be merged further
+}
+
+local function isMergeableUnit(name)
+    for _, prefix in ipairs(UNMERGEABLE_PREFIXES) do
+        if name:sub(1, #prefix) == prefix then return false end
+    end
+    return true
+end
+
 local function shouldSkipEntry(name)
+    if not isMergeableUnit(name) then return true end  -- skip Titan/Mega/Giant Sparking
+    if mergedThisSession[name] then return true end     -- skip already merged this session
     local n = name:lower()
     if n:find("wano luffy", 1, true) then return true end
     if n:find("naru (kid)", 1, true) then return true end
@@ -662,10 +646,42 @@ local function shouldSkipEntry(name)
     return false
 end
 
+local function getInventoryCount()
+    local doodleInv = LocalPlayer:FindFirstChild("DoodleInv")
+    if not doodleInv then return 0 end
+    local total = 0
+    for _, entry in ipairs(doodleInv:GetChildren()) do
+        if entry:IsA("IntValue") then total += entry.Value end
+    end
+    return total
+end
+
+local function buildMergeQueue(doodleInv)
+    local queue = {}
+    local inv = doodleInv or LocalPlayer:FindFirstChild("DoodleInv")
+    if not inv then return queue end
+    local threshold = MERGE_THRESHOLD
+    -- Emergency: if inventory near cap, lower threshold to 4
+    if getInventoryCount() >= INVENTORY_SAFE then threshold = 4 end
+    for _, entry in ipairs(inv:GetChildren()) do
+        if entry:IsA("IntValue") and entry.Value >= threshold
+            and not shouldSkipEntry(entry.Name) then
+            if not mergeRaidOnly or isRaidUnit(entry.Name) then
+                table.insert(queue, entry.Name)
+            end
+        end
+    end
+    return queue
+end
+
 local function findMergeUnit(doodleInv, targetName)
     if targetName == "" then
         for _, entry in ipairs(doodleInv:GetChildren()) do
-            if entry:IsA("IntValue") and entry.Value >= 4 and not shouldSkipEntry(entry.Name) then return entry end
+            local thresh = (getInventoryCount() >= INVENTORY_SAFE) and 4 or MERGE_THRESHOLD
+            if entry:IsA("IntValue") and entry.Value >= thresh and not shouldSkipEntry(entry.Name) then
+                if mergeRaidOnly and not isRaidUnit(entry.Name) then continue end
+                return entry
+            end
         end
         return nil
     end
@@ -754,30 +770,79 @@ local function performMerge()
     task.wait(0.5)
     fireproximityprompt(mergePrompt)
     DevNgg:Notify({ Title = "Merging!", Content = "Merging 4x " .. unitToMerge, Duration = 3 })
+    mergedThisSession[unitToMerge] = true  -- mark so we don't re-teleport this session
     task.wait(4)
 end
 
 -- ══════════════════════════════════════════════════════════════
--- ★ FIX: startMergeLoop declaration was missing — added here ★
+-- SMART MERGE LOOP
+-- Priority: Raid > Merge. Batch queue. Cooldown. Inventory buffer.
 -- ══════════════════════════════════════════════════════════════
+local function runMergeSession()
+    -- Never merge during an active raid fight
+    if getgenv().AutoRaid and isRaidActive() then return end
+    local doodleInv = LocalPlayer:FindFirstChild("DoodleInv")
+    if not doodleInv then return end
+    -- Build queue of everything mergeable in one pass
+    local queue = mergeTargetUnit ~= "" and {mergeTargetUnit} or buildMergeQueue(doodleInv)
+    if #queue == 0 then return end
+    isMerging = true
+    -- Teleport to Crushinator ONCE for the whole batch
+    local crushinator, mergePrompt = findCrushinator()
+    if not crushinator or not mergePrompt then
+        isMerging = false
+        DevNgg:Notify({ Title="Merge", Content="Crushinator not found.", Duration=3 })
+        return
+    end
+    teleportToCrushinator()
+    task.wait(0.3)
+    local merged = 0
+    for _, unitName in ipairs(queue) do
+        local entry = doodleInv:FindFirstChild(unitName)
+        if not entry or entry.Value < 4 or shouldSkipEntry(unitName) then continue end
+        Events.SquadUpdate:FireServer({ ["1"]=unitName, ["2"]=unitName, ["3"]=unitName, ["4"]=unitName })
+        task.wait(0.5)
+        fireproximityprompt(mergePrompt)
+        mergedThisSession[unitName] = true
+        merged += 1
+        DevNgg:Notify({ Title="Merging!", Content="4x "..unitName.." ("..merged.."/"..#queue..")", Duration=2 })
+        task.wait(4)
+        -- Re-check if raid started mid-session — stop and return
+        if getgenv().AutoRaid and isRaidActive() then
+            DevNgg:Notify({ Title="⚔ Raid Active!", Content="Stopping merge — returning to boss.", Duration=3 })
+            break
+        end
+    end
+    -- Re-equip raid team after merge session
+    equipQuickSquad()
+    if merged > 0 then
+        DevNgg:Notify({ Title="✅ Merge Done", Content=merged.." unit(s) merged. Squad restored.", Duration=4 })
+    end
+    lastMergeTime = os.clock()
+    isMerging = false
+end
+
 local function startMergeLoop()
     if mergeLoopThread then task.cancel(mergeLoopThread) mergeLoopThread = nil end
     mergeLoopThread = task.spawn(function()
-        local ok = false
-        for _ = 1, 10 do
-            if teleportToCrushinator() then ok = true break end
-            task.wait(0.5)
-        end
-        if not ok then
-            DevNgg:Notify({ Title = "Merge", Content = "Crushinator not found — will retry each merge.", Duration = 3 })
-        else
-            DevNgg:Notify({ Title = "Merge", Content = "Teleported to Crushinator!", Duration = 3 })
-        end
         while autoMergeEnabled do
-            teleportToCrushinator()
-            task.wait(0.2)
-            performMerge()
-            task.wait(0.5)
+            task.wait(5)  -- always yield first — prevents tight loop freeze
+            if not autoMergeEnabled then break end
+            -- Raid takes priority unless inventory is critical
+            local invCount = getInventoryCount()
+            local emergency = invCount >= INVENTORY_SAFE
+            if getgenv().AutoRaid and isRaidActive() and not emergency then
+                continue  -- wait another 5s and check again
+            end
+            local cooldownReady = (os.clock() - lastMergeTime) >= MERGE_COOLDOWN
+            if not cooldownReady and not emergency then continue end
+            local doodleInv = LocalPlayer:FindFirstChild("DoodleInv")
+            local queue = mergeTargetUnit ~= "" and {mergeTargetUnit} or buildMergeQueue(doodleInv)
+            if #queue == 0 then continue end
+            if emergency then
+                DevNgg:Notify({ Title="⚠ Inventory Full!", Content="Emergency merge ("..invCount.."/20).", Duration=4 })
+            end
+            runMergeSession()
         end
     end)
 end
@@ -802,6 +867,9 @@ local function teleportToBossAndFight()
         DevNgg:Notify({ Title = "Boss Not Found", Content = "No raid boss found in Campaign!", Duration = 3 })
         return false
     end
+    -- Equip selected quick squad before fighting
+    equipQuickSquad()
+    task.wait(0.3)
     local hrp = getHumanoidRootPart()
     if hrp then hrp.CFrame = CFrame.new(boss.Position + Vector3.new(0, 3, 0)) end
     DevNgg:Notify({ Title = "⚔ Raid Boss!", Content = "Teleported to " .. boss.Name .. " — starting battle...", Duration = 3 })
@@ -821,15 +889,31 @@ local function teleportToBossAndFight()
     return true
 end
 
+local raidAutoConn = nil
+
 local function startRaidLoop()
     if raidLoopThread then task.cancel(raidLoopThread) raidLoopThread = nil end
+    getgenv().AutoRaid = true
+    -- Safely get State.Auto — crashes loop if path missing without pcall
+    local StateAuto = nil
+    pcall(function()
+        local State = game.ReplicatedStorage:WaitForChild("State", 5)
+        if State then StateAuto = State:WaitForChild("Auto", 5) end
+    end)
+    if StateAuto then
+        StateAuto.Value = true
+        if raidAutoConn then raidAutoConn:Disconnect() end
+        raidAutoConn = StateAuto.Changed:Connect(function()
+            if getgenv().AutoRaid and not StateAuto.Value then StateAuto.Value = true end
+        end)
+    end
     raidLoopThread = task.spawn(function()
         local wasActive = false
-        while autoRaidEnabled do
+        while getgenv().AutoRaid do
             local active = isRaidActive()
             if active and not wasActive then
                 task.wait(1.5)
-                if autoRaidEnabled then teleportToBossAndFight() end
+                if getgenv().AutoRaid then teleportToBossAndFight() end
                 wasActive = true
             elseif not active and wasActive then
                 wasActive = false
@@ -841,12 +925,12 @@ local function startRaidLoop()
 end
 
 workspace.DescendantAdded:Connect(function(obj)
-    if not autoRaidEnabled then return end
+    if not getgenv().AutoRaid then return end
     if not (obj:IsA("Model") or obj:IsA("Folder")) then return end
     local parent = obj.Parent
     if parent and parent.Name == "Campaign" and RAID_BOSS_FOLDERS[obj.Name] then
         task.wait(2)
-        if autoRaidEnabled then teleportToBossAndFight() end
+        if getgenv().AutoRaid then teleportToBossAndFight() end
     end
 end)
 
@@ -916,16 +1000,58 @@ end
 -- ══════════════════════════════════════════════════════════════
 local function onDragonBallDetected()
     if not dragonBallAutoCollect or isCollecting or isHopping then return end
+    if isShenronActive then return end
     task.spawn(collectAllDragonBalls)
 end
 
-workspace.DescendantAdded:Connect(function(obj)
-    if not dragonBallAutoCollect then return end
-    if isDragonBall(obj) then task.wait(0.1) onDragonBallDetected() end
+-- Shenron pause: ShenronWishes.OnClientEvent fires exactly when wish UI opens
+-- This is confirmed from the game source — it's the real Shenron signal
+local isShenronActive = false
+Events.ShenronWishes.OnClientEvent:Connect(function()
+    isShenronActive = true
+    DevNgg:Notify({ Title="🐉 Shenron Summoned", Content="Collection paused during wish...", Duration=4 })
+    -- Watch ShenronWishes frame — when it hides, wish is done and balls will respawn
+    local wishFrame = LocalPlayer.PlayerGui.ScreenGui:FindFirstChild("ShenronWishes")
+    if wishFrame then
+        local conn
+        conn = wishFrame:GetPropertyChangedSignal("Visible"):Connect(function()
+            if not wishFrame.Visible then
+                isShenronActive = false
+                if conn then conn:Disconnect() conn = nil end
+                -- New balls spawn after wish — rescan after delay
+                task.delay(5, function()
+                    rescanDragonBalls()
+                    if dragonBallAutoCollect then onDragonBallDetected() end
+                end)
+            end
+        end)
+    end
+end)
+
+-- Ball spawn detection: workspace.ChildAdded for top-level DragonBall parts
+-- (No remote fires for spawns — confirmed from source code)
+workspace.ChildAdded:Connect(function(obj)
+    if isDragonBall(obj) then
+        dragonBallCache[obj] = true
+        -- Webhook: notify on spawn immediately
+        -- State changed to present — monitor will catch it next cycle
+        -- Immediate spawn notification
+        fireWebhook("🐉 Dragon Ball Spawned", 16027660,
+            "**User:** " .. LocalPlayer.Name .. " (@" .. LocalPlayer.Name .. ")\n\n" ..
+            "🌟 **Ball:** " .. obj.Name .. "\n" ..
+            "📍 **Server:** " .. tostring(game.JobId):sub(1,8) .. "...\n" ..
+            "🕐 **Time:** " .. getTime()
+        )
+        webhookLastState = true  -- update state so monitor doesnt double-fire
+        if dragonBallAutoCollect and not isShenronActive then
+            task.wait(0.5)  -- wait for ProximityPrompt to attach to the ball
+            onDragonBallDetected()
+        end
+    end
 end)
 
 local function rescanDragonBalls()
-    for _, obj in ipairs(workspace:GetDescendants()) do
+    for _, obj in ipairs(workspace:GetChildren()) do
         if isDragonBall(obj) then dragonBallCache[obj] = true end
     end
 end
@@ -935,9 +1061,8 @@ local function startCollectLoop()
     collectLoopThread = task.spawn(function()
         task.wait(2)
         while dragonBallAutoCollect do
-            if not isCollecting and not isHopping then
-                -- Always rescan workspace first so we never miss a ball
-                rescanDragonBalls()
+            if not isCollecting and not isHopping and not isShenronActive then
+                -- Fallback poll — ChildAdded handles instant detection, this catches edge cases
                 if dragonBallsExist() then
                     onDragonBallDetected()
                 elseif dragonBallAutoHop then
@@ -946,7 +1071,7 @@ local function startCollectLoop()
                     for i = 1, 3 do
                         DevNgg:Notify({ Title = "Scanning... " .. i .. "/3", Content = "Checking for Dragon Balls...", Duration = 2 })
                         task.wait(2)
-                        rescanDragonBalls()
+                        rescanDragonBalls()  -- only rescan here when actually needed
                         if dragonBallsExist() then found = true break end
                     end
                     if found then
@@ -958,7 +1083,7 @@ local function startCollectLoop()
                     end
                 end
             end
-            task.wait(1)
+            task.wait(5)  -- slow fallback poll — events handle the real work
         end
     end)
 end
@@ -1301,15 +1426,7 @@ local function getValidCoolers()
 end
 
 local function moveToTarget(npcPos)
-    local myHRP = getHumanoidRootPart()
-    if not myHRP then return end
-    local dist = (myHRP.Position - npcPos).Magnitude
-    if dist > 25 then
-        -- Far away: teleport once to 15 studs away
-        myHRP.CFrame = CFrame.new(npcPos + Vector3.new(15, 0, 0))
-        task.wait(0.3)
-    end
-    -- Always walk the final approach to trigger proximity
+    -- Always walk from current position — never teleport behind the NPC
     local h = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
     if h then h:MoveTo(npcPos) end
 end
@@ -1365,10 +1482,18 @@ local function startTrialsLoop()
                 -- Stuck detection: skip if model already gone
                 if not model.Parent or not hrp.Parent then continue end
 
-                -- STEP 1: Move away then approach to trigger BattleChat
+                -- STEP 1: Go to safe center first, then walk toward cooler
                 local myHrp = getHumanoidRootPart()
-                if myHrp then myHrp.CFrame = CFrame.new(npcPos + Vector3.new(15, 0, 0)) end
-                task.wait(0.4)
+                if myHrp then
+                    local dist = (myHrp.Position - npcPos).Magnitude
+                    if dist > 25 then
+                        -- Far away: use safe center as the jump point
+                        pcall(function()
+                            myHrp.CFrame = workspace.Teleports.TeleportParts.Trials.CFrame + Vector3.new(0, 5, 0)
+                        end)
+                        task.wait(0.4)
+                    end
+                end
 
                 -- STEP 2: Listen for battle start BEFORE walking in
                 local battleStarted = false
@@ -1397,11 +1522,13 @@ local function startTrialsLoop()
                     moveToTarget(npcPos)
                     task.wait(1.5); elapsed += 1.5
                     stuckCount += 1
-                    -- Stuck: reset approach
+                    -- Stuck: reset to safe center and retry approach
                     if stuckCount >= 3 then
                         stuckCount = 0
                         myHrp = getHumanoidRootPart()
-                        if myHrp then myHrp.CFrame = CFrame.new(npcPos + Vector3.new(15,0,0)) end
+                        pcall(function()
+                            if myHrp then myHrp.CFrame = workspace.Teleports.TeleportParts.Trials.CFrame + Vector3.new(0,5,0) end
+                        end)
                         task.wait(0.4)
                     end
                 end
@@ -1459,10 +1586,12 @@ local function startTrialsLoop()
                     break
                 else
                     DevNgg:Notify({ Title="⚔ Wave "..trialsFloor.." done!", Content="Wins: "..trialsWins, Duration=2 })
-                    -- Walk away to reset proximity for next cooler / next wave
+                    -- Teleport to Trials map center (safe, no obstacles)
                     myHrp = getHumanoidRootPart()
-                    if myHrp and hrp.Parent then
-                        myHrp.CFrame = CFrame.new(npcPos + Vector3.new(15,0,0))
+                    if myHrp then
+                        pcall(function()
+                            myHrp.CFrame = workspace.Teleports.TeleportParts.Trials.CFrame + Vector3.new(0, 5, 0)
+                        end)
                     end
                     task.wait(0.5)
                 end
@@ -1583,59 +1712,64 @@ DragonBallTab:CreateSection("Manual")
 DragonBallTab:CreateButton({ Name="Server Hop Now", Callback=function() task.spawn(serverHop) end })
 DragonBallTab:CreateButton({ Name="Collect All Now", Callback=function() task.spawn(collectAllDragonBalls) end })
 
+DragonBallTab:CreateSection("Webhook Notifications")
+DragonBallTab:CreateTextInput({
+    Name = "Webhook URL", Placeholder = "https://discord.com/api/webhooks/...", Default = dragonBallWebhook,
+    Callback = function(text)
+        dragonBallWebhook = text
+        pcall(function()
+            if not isfolder("AniPixels") then makefolder("AniPixels") end
+            writefile(WEBHOOK_FILE, HttpService:JSONEncode({ url=text, cooldown=webhookCooldown }))
+        end)
+        if text ~= "" then
+            startWebhookMonitor()
+            DevNgg:Notify({ Title="Webhook Set", Content="Dragon Ball monitoring active.", Duration=3 })
+        else
+            if webhookMonitorThread then task.cancel(webhookMonitorThread) webhookMonitorThread=nil end
+            DevNgg:Notify({ Title="Webhook Cleared", Content="Notifications disabled.", Duration=2 })
+        end
+    end,
+})
+DragonBallTab:CreateButton({
+    Name = "Test Webhook",
+    Callback = function()
+        if dragonBallWebhook == "" then DevNgg:Notify({ Title="No URL", Content="Set a webhook URL first.", Duration=3 }) return end
+        pcall(function()
+            local body = HttpService:JSONEncode({
+                content = "✅ **Webhook test from AniPixels AutoFarm** — Dragon Ball notifications are working!"
+            })
+            local fn = request or (syn and syn.request) or http_request
+            if fn then
+                fn({ Url = dragonBallWebhook, Method = "POST",
+                    Headers = { ["Content-Type"] = "application/json" }, Body = body })
+                DevNgg:Notify({ Title="✅ Test Sent", Content="Check your Discord channel.", Duration=4 })
+            else
+                DevNgg:Notify({ Title="⚠ Unsupported", Content="Your executor does not support HTTP requests.", Duration=4 })
+            end
+        end)
+    end,
+})
+
 -- ══════════════════════════════════════════════════════════════
 -- TAB 2: Shenron
 -- ══════════════════════════════════════════════════════════════
 local WishTab = Window:CreateTab("Shenron", nil)
 
-local ALL_BARE_NAMES = {
-    "Aizen","Akaza","Aki","Al","All For One","All Might","Anbu",
-    "Android 17","Android 18","Android 19","Arima","Armstrong","Arthur",
-    "Astto","Awakened Mahito","Baek Yonhoo","Baraggan","Beru","Blackstar",
-    "Boros","Boruto (Timeskip)","Broly (Super)","Brook","CandyVegito",
-    "Carrot","Cell Jr","Cha Hae","Chad","Chakra Puppet","Choji","Chopper",
-    "Chrollo","Cooler Final Form","CrazyDiamond","Dabi","Darkness Devil",
-    "Death The Kid","Denji","Dio Over Heaven","Doppio","Dr Gero","Ed",
-    "Escanor","Eto","Fat Janemba","Final Form Muzan","Frankie","Franklin",
-    "Frieren","Frieza Final Form","Fusion Zamasu (Corrupted)","Future Gohan",
-    "Future Trunks","Future Trunks (Base)","Giyu","Gluttony","Gogeta (Fat)",
-    "Gogeta Blue","Gohan (Super Saiyan 2)","Gojo","Gojo (Legs)","Gojo (Shinjuku)",
-    "Gok (Base)","Goku (Super Saiyan)","Goku Black (Rose)","Goku SS3",
-    "Golden Experience","Golden Experience (Requiem)","Gon","Gon (End)",
-    "Goots","Granz","Griff","Grimmjow","Grimmjow (Resurrecion)","GunGirl",
-    "Gyutaro","HGreen","Hakari","Halibel","Hanami","HandStrong",
-    "Heian Era Sukuna","HermitPurple","Hero of Hell","Hideyoshi","Higuruma",
-    "Hinata","Hinawa","Hisoka","Ichigo (VastoLorde)","Ichigo Hollowfied",
-    "Igris","Illumi","Imperfect Cell","Ino","Iris","Iron","Iruka","Issei",
-    "Itach","Jimbei","Jogo","Jotaro","Jotaro Star Platinum (Rage)","JudgeSpirit",
-    "Junpei","Juuzou","Kaido","KaidoDragon","Kakash","Kaneki","Kaneki-Kakuja",
-    "Kashimo","Katana Man","Kiba","Kid","Kid Buu","KidGaar","Killer",
-    "Killer Queen","Killua","Killua (Godspeed)","King","King Crimson","Kira",
-    "Kisuke","Kokushibo","Krillin","Krona","Kurapika","Kusukabe","Kyubey",
-    "Kyuubi","Law","Leorio","LingYao","Lst","LuBu","Luff","Luffy (Gear 4)",
-    "Luffy (Gear 5)","Madara Ten Tails","Made In Heaven","MagiciansRed",
-    "Mahito","Mahoraga","Maka","Maki","Maki Zenin","Makima","Masked Tob",
-    "Mechamaru","Medusa","Megumi","Meliodas","Might Guy (Ninth Gate)","Miwa",
-    "Mizuki","Momo","Monster Garou","Nami","Nanami","Naru (Kid)","Naru (Sign)",
-    "Neji","Nel","Nnoitra","Nobara","Nobunaga","Noolle","Obito Ten Tails",
-    "Okarun","Orihime","Owl","Panda","Perfect Cell","Piccolo","Pikkon",
-    "Poseidon","Power","Pride","PuppetGuy","Purple Haze","Queen","RealDIO",
-    "RealJojo","Reinhard","Rengoku","Renji","Rimuru","Riza","Rize","Robin",
-    "Rock Lee","Roy","Rukia","Ryuma","Saitama","Sakur","Sanji","Sasaki",
-    "Sasu","Sasuke (Curse Mark 2)","Scar","Shadow DIO","Shanks","Shield Hero",
-    "Shigaraki","Shika","Shino","Shinobu","Shinra","Shizuku","SilverChariot",
-    "SilverChariot (Requiem)","Soul","SpearGirl","StaffGirl","Star Platinum",
-    "Starrk","Subaru","Sukuna","Sukuna (Shinjuku)","Sung Jinwoo","Super Gogeta",
-    "Super Janemba","Super Perfect Cell","Super Vegito","SwordGirl","SwordGuy",
-    "Takako","Tamaki","Tanjiro","Tatsumaki","Temari","TenTen","Tengen",
-    "The World","TheFool","Thor","TimeGirl","Todo","Toji","Tokito","Touka",
-    "Trunks (Spirit Bomb Sword)","Tsukiyama","Turles","Tusk","Ulquiorra",
-    "Ulquiorra (Murcielago)","Ulquiorra (Segunda)","Ulti","Uraume","Uryu",
-    "Usopp","Vegeta (Majin)","Vegeta (Super Saiyan)","Vegito Blue",
-    "Wandering Soul","Wano Luffy","Wolf Beast","WonderU","Wrath","X",
-    "Yamato","Yammy","Yomi","Yoogi","Yoomi","Yoono","Yoriichi","Yorozu",
-    "Young Gojo","Yuji","Yuta","Zeeno","Zeeno23","Zomarie","Zoono","Zoro",
-}
+-- ALL_BARE_NAMES: Mega Sparking units only for Auto Wish
+-- Filters out Titan, Giant, Titan Sparking, Giant Sparking variants
+local ALL_BARE_NAMES = {}
+do
+    local Doodles = ReplicatedStorage:FindFirstChild("Doodles")
+    if Doodles then
+        for _, d in ipairs(Doodles:GetChildren()) do
+            if d.Name:sub(1, 14) == "Mega Sparking " then
+                table.insert(ALL_BARE_NAMES, d.Name:sub(15))
+            end
+        end
+        table.sort(ALL_BARE_NAMES)
+    end
+end
+
 
 WishTab:CreateSection("Add Wish Target (Mega Sparking)")
 WishTab:CreateLabel({ Text = "Pick a unit — auto-prefixed as Mega Sparking:" })
@@ -1727,45 +1861,6 @@ WishTab:CreateToggle({
 
 WishTab:CreateButton({ Name="Wish Now (Manual)", Callback=function() fireClaimWish() end })
 
-WishTab:CreateSection("Unit Scanner")
-WishTab:CreateButton({
-    Name="🔍 Scan ALL Units (auto copy)",
-    Callback=function()
-        local doodles = ReplicatedStorage:FindFirstChild("Doodles")
-        if not doodles then DevNgg:Notify({ Title="Error", Content="Doodles folder not found!", Duration=3 }) return end
-        local tiers = { ["Titan Sparking"]={}, ["Mega Sparking"]={}, ["Giant Sparking"]={}, ["Sparking"]={}, ["Other"]={} }
-        local order = {"Titan Sparking","Mega Sparking","Giant Sparking","Sparking","Other"}
-        local prefixes = {"Titan Sparking ","Mega Sparking ","Giant Sparking ","Sparking "}
-        for _, d in ipairs(doodles:GetChildren()) do
-            local n = d.Name
-            local placed = false
-            for _, p in ipairs(prefixes) do
-                if n:sub(1,#p)==p then
-                    local tier = p:gsub("%s+$","")
-                    if tiers[tier] then table.insert(tiers[tier],n) end
-                    placed = true break
-                end
-            end
-            if not placed then table.insert(tiers["Other"],n) end
-        end
-        local lines, total = {}, 0
-        for _, tier in ipairs(order) do
-            table.sort(tiers[tier])
-            if #tiers[tier]>0 then
-                table.insert(lines,"=== "..tier:upper().." ("..#tiers[tier]..") ===")
-                for _, name in ipairs(tiers[tier]) do table.insert(lines,"  "..name) total+=1 end
-            end
-        end
-        table.insert(lines,"\nTOTAL: "..total)
-        local out = table.concat(lines,"\n")
-        print(out)
-        local setclip = setclipboard or toclipboard or set_clipboard
-        local copied = false
-        if setclip then pcall(function() setclip(out) copied=true end) end
-        DevNgg:Notify({ Title="Scanned "..total.." units!", Content=copied and "Copied to clipboard + F9!" or "Check F9 console!", Duration=5 })
-    end,
-})
-
 -- ══════════════════════════════════════════════════════════════
 -- TAB 3: Campaign
 -- ══════════════════════════════════════════════════════════════
@@ -1779,14 +1874,6 @@ CampaignTab:CreateTextInput({
     end,
 })
 
-CampaignTab:CreateToggle({
-    Name="Sparking Units Only", CurrentValue=false, Flag="QuickSparkingOnly",
-    Callback=function(enabled)
-        quickTeleportSparking = enabled
-        DevNgg:Notify({ Title=enabled and "Sparking Only ON" or "Sparking Only OFF", Content=enabled and "Only teleports to Sparking+ units." or "All tiers allowed.", Duration=3 })
-    end,
-})
-
 CampaignTab:CreateButton({
     Name="Teleport Now",
     Callback=function()
@@ -1797,88 +1884,6 @@ CampaignTab:CreateButton({
             DevNgg:Notify({ Title="Teleported!", Content=found.Name, Duration=3 })
         else
             DevNgg:Notify({ Title="Not Found", Content='"'..quickTeleportTarget..'" not found.', Duration=3 })
-        end
-    end,
-})
-
-CampaignTab:CreateButton({
-    Name="List All Units on Map",
-    Callback=function()
-        local campaign = workspace:FindFirstChild("Campaign")
-        if not campaign then DevNgg:Notify({ Title="Error", Content="Campaign folder not found!", Duration=3 }) return end
-        local seen,count = {},0
-        print("=== UNITS ON MAP (bosses excluded) ===")
-        for _, part in ipairs(campaign:GetDescendants()) do
-            if part:IsA("Part") and isValidUnit(part.Name) and not seen[part.Name] and not isRaidBoss(part) then
-                seen[part.Name]=true count+=1 print(part.Name)
-            end
-        end
-        print("Total: "..count)
-        DevNgg:Notify({ Title=count.." Units on Map", Content="Check console (F9)!", Duration=4 })
-    end,
-})
-
-CampaignTab:CreateSection("Unit List")
-
-CampaignTab:CreateTextInput({
-    Name="Add Unit to Campaign List", Placeholder="e.g. Zoono, Makima...", Default="",
-    Callback=function(text) autoCampaignTargetUnit=text end,
-})
-
-CampaignTab:CreateButton({
-    Name="Add to List",
-    Callback=function()
-        if autoCampaignTargetUnit=="" then DevNgg:Notify({ Title="Empty Input", Content="Type a unit name first!", Duration=3 }) return end
-        for _, existing in ipairs(autoCampaignTargetUnits) do
-            if existing:lower()==autoCampaignTargetUnit:lower() then
-                DevNgg:Notify({ Title="Already in List", Content=autoCampaignTargetUnit.." is already added.", Duration=3 })
-                return
-            end
-        end
-        table.insert(autoCampaignTargetUnits, autoCampaignTargetUnit)
-        refreshCampaignDropdown()
-        DevNgg:Notify({ Title="Added: "..autoCampaignTargetUnit, Content="List total: "..#autoCampaignTargetUnits.." unit(s)", Duration=3 })
-        autoCampaignTargetUnit=""
-    end,
-})
-
-campaignListDropdown = CampaignTab:CreateDropdown({
-    Name="Remove Unit", Options={"(empty)"}, Default="",
-    Callback=function(selected)
-        if selected=="(empty)" or selected=="" then return end
-        for i, name in ipairs(autoCampaignTargetUnits) do
-            if name==selected then table.remove(autoCampaignTargetUnits,i) refreshCampaignDropdown()
-                DevNgg:Notify({ Title="Unit Removed", Content=selected.." removed.", Duration=3 }) return
-            end
-        end
-    end,
-})
-
-CampaignTab:CreateButton({
-    Name="Clear List",
-    Callback=function()
-        autoCampaignTargetUnits={}
-        refreshCampaignDropdown()
-        DevNgg:Notify({ Title="List Cleared", Content="Campaign list is now empty.", Duration=3 })
-    end,
-})
-
-CampaignTab:CreateSection("Automation")
-
-CampaignTab:CreateToggle({
-    Name="Auto Campaign", CurrentValue=false, Flag="AutoCampaignEnabled",
-    Callback=function(enabled)
-        autoCampaignEnabled=enabled
-        if enabled then
-            if #autoCampaignTargetUnits==0 then
-                DevNgg:Notify({ Title="Nothing to Find", Content="Add units to the list first.", Duration=3 })
-                autoCampaignEnabled=false return
-            end
-            DevNgg:Notify({ Title="Auto Campaign — Running", Content=#autoCampaignTargetUnits.." unit(s) in list", Duration=4 })
-            startAutoCampaignLoop()
-        else
-            DevNgg:Notify({ Title="Auto Campaign — Stopped", Content="Campaign loop cancelled.", Duration=3 })
-            if autoCampaignThread then task.cancel(autoCampaignThread) autoCampaignThread=nil end
         end
     end,
 })
@@ -1909,11 +1914,53 @@ MergeTab:CreateToggle({
             DevNgg:Notify({ Title="Auto Merge — On", Content=mergeTargetUnit~="" and ("Merging: "..mergeTargetUnit) or "Auto-merging any with 4+", Duration=3 })
             startMergeLoop()
         else
-            DevNgg:Notify({ Title="Auto Merge — Off", Content="Stopped.", Duration=3 })
+                        DevNgg:Notify({ Title="Auto Merge — Off", Content="Stopped.", Duration=3 })
             if mergeLoopThread then task.cancel(mergeLoopThread) mergeLoopThread=nil end
+            mergedThisSession = {}  -- reset session cache on toggle off
         end
     end,
 })
+
+MergeTab:CreateToggle({
+    Name="Raid Units Only", CurrentValue=false, Flag="MergeRaidOnly",
+    Callback=function(enabled)
+        mergeRaidOnly = enabled
+        DevNgg:Notify({ Title=enabled and "Raid Only — ON" or "Raid Only — OFF",
+            Content=enabled and "Auto Merge will only target raid boss units." or "Auto Merge targets all units.",
+            Duration=3 })
+    end,
+})
+
+MergeTab:CreateSection("Smart Merge Settings")
+
+MergeTab:CreateTextInput({
+    Name="Merge Threshold (copies)", Placeholder="Default: 4 | Smart: 8", Default="4",
+    Callback=function(text)
+        local n = tonumber(text)
+        if n and n >= 4 then
+            MERGE_THRESHOLD = n
+            mergedThisSession = {}  -- reset so units can be re-evaluated
+            DevNgg:Notify({ Title="Threshold Set", Content="Merge triggers at "..n.." copies.", Duration=3 })
+        else
+            DevNgg:Notify({ Title="Invalid", Content="Minimum is 4.", Duration=2 })
+        end
+    end,
+})
+
+MergeTab:CreateTextInput({
+    Name="Merge Cooldown (seconds)", Placeholder="Default: 25", Default="25",
+    Callback=function(text)
+        local n = tonumber(text)
+        if n and n >= 5 then
+            MERGE_COOLDOWN = n
+            DevNgg:Notify({ Title="Cooldown Set", Content="Merge waits "..n.."s between sessions.", Duration=3 })
+        else
+            DevNgg:Notify({ Title="Invalid", Content="Minimum is 5.", Duration=2 })
+        end
+    end,
+})
+
+MergeTab:CreateLabel({ Text = "Safe Limit: merge triggers at 17/20 inventory. Raid always has priority unless inventory is critical." })
 
 MergeTab:CreateSection("Starter Chain Merge (Normal → Titan Sparking)")
 
@@ -1978,6 +2025,8 @@ RaidTab:CreateToggle({
             end
             startRaidLoop()
         else
+            getgenv().AutoRaid = false
+            if raidAutoConn then raidAutoConn:Disconnect() raidAutoConn = nil end
             DevNgg:Notify({ Title="Auto Raid OFF", Content="Stopped.", Duration=3 })
             if raidLoopThread then task.cancel(raidLoopThread) raidLoopThread=nil end
         end
@@ -1989,6 +2038,49 @@ RaidTab:CreateButton({
     Callback=function()
         if not isRaidActive() then DevNgg:Notify({ Title="No Raid", Content="No raid boss detected!", Duration=3 }) return end
         task.spawn(teleportToBossAndFight)
+    end,
+})
+
+-- ══════════════════════════════════════════════════════════════
+-- ══════════════════════════════════════════════════════════════
+-- ══════════════════════════════════════════════════════════════
+-- QUICK SQUAD (auto-equipped before each raid boss fight + after merge)
+-- Reads directly from Players > LocalPlayer > QuickSquads > [1-4]
+-- ══════════════════════════════════════════════════════════════
+local selectedQuickSquad = 1
+
+equipQuickSquad = function()
+    pcall(function()
+        local squads = LocalPlayer:FindFirstChild("QuickSquads")
+        if not squads then return end
+        local squad = squads:FindFirstChild(tostring(selectedQuickSquad))
+        if not squad then return end
+        local units = {}
+        for i = 1, 4 do
+            local slot = squad:FindFirstChild(tostring(i))
+            if slot then units[tostring(i)] = slot.Value end
+        end
+        if next(units) then
+            Events.SquadUpdate:FireServer(units)
+        end
+    end)
+end
+
+RaidTab:CreateSection("Quick Squad")
+
+RaidTab:CreateDropdown({
+    Name = "Auto-Equip Quick Squad", Options = {"1", "2", "3", "4"}, Default = "1",
+    Callback = function(selected)
+        selectedQuickSquad = tonumber(selected)
+        DevNgg:Notify({ Title="Quick Squad #"..selected, Content="Will auto-equip before raids and after merges.", Duration=3 })
+    end,
+})
+
+RaidTab:CreateButton({
+    Name = "Equip Now",
+    Callback = function()
+        equipQuickSquad()
+        DevNgg:Notify({ Title="✅ Quick Squad #"..selectedQuickSquad.." Equipped", Content="Squad applied!", Duration=3 })
     end,
 })
 
@@ -2144,8 +2236,7 @@ SettingsTab:CreateButton({
                 AutoCollect=dragonBallAutoCollect, AutoHop=dragonBallAutoHop, AutoWish=dragonBallAutoWish,
                 WishTargets=wishTargets, SafariTarget=safariTargetUnit, SafariHop=autoSafariServerHop,
                 SafariSparking=autoSafariSparking, AutoSafari=autoSafariEnabled,
-                CampaignUnits=autoCampaignTargetUnits, CampaignSparking=autoCampaignFindSparking,
-                CampaignHop=autoCampaignServerHop, AutoCampaign=autoCampaignEnabled, MergeTarget=mergeTargetUnit,
+                MergeTarget=mergeTargetUnit, WebhookUrl=dragonBallWebhook, WebhookCooldown=webhookCooldown,
             }))
         end)
         if configDropdown then configDropdown:SetOptions(getSavedConfigs()) end
@@ -2159,25 +2250,24 @@ configDropdown = SettingsTab:CreateDropdown({
         local ok, data = pcall(function() return HttpService:JSONDecode(readfile("AniPixels/Configs/"..selectedName..".json")) end)
         if not ok or not data then DevNgg:Notify({ Title="Load Failed", Content="Could not load: "..selectedName, Duration=3 }) return end
         dragonBallAutoCollect=false dragonBallAutoHop=false dragonBallAutoWish=false
-        autoSafariEnabled=false autoCampaignEnabled=false
+        autoSafariEnabled=false
         if collectLoopThread then task.cancel(collectLoopThread) collectLoopThread=nil end
         if safariThread then task.cancel(safariThread) safariThread=nil end
-        if autoCampaignThread then task.cancel(autoCampaignThread) autoCampaignThread=nil end
         wishTargets=(type(data.WishTargets)=="table") and data.WishTargets or {}
         refreshWishDropdown()
         safariTargetUnit=data.SafariTarget or ""
         autoSafariServerHop=data.SafariHop~=false
         autoSafariSparking=data.SafariSparking~=false
-        if type(data.CampaignUnits)=="table" then autoCampaignTargetUnits=data.CampaignUnits end
-        autoCampaignFindSparking=data.CampaignSparking~=false
-        autoCampaignServerHop=data.CampaignHop~=false
         mergeTargetUnit=data.MergeTarget or ""
+        if data.WebhookUrl and data.WebhookUrl ~= "" then
+            dragonBallWebhook = data.WebhookUrl
+            if data.WebhookCooldown then webhookCooldown = data.WebhookCooldown end
+            startWebhookMonitor()
+        end
         pcall(function() Window:SetToggle("AutoCollect",data.AutoCollect or false) end)
         pcall(function() Window:SetToggle("AutoHop",data.AutoHop or false) end)
         pcall(function() Window:SetToggle("AutoWish",data.AutoWish or false) end)
         pcall(function() Window:SetToggle("AutoSafari",data.AutoSafari or false) end)
-        pcall(function() Window:SetToggle("AutoCampaignEnabled",data.AutoCampaign or false) end)
-        refreshCampaignDropdown()
         pcall(function()
             if not isfolder("AniPixels") then makefolder("AniPixels") end
             writefile("AniPixels/LastConfig.json", HttpService:JSONEncode({ lastConfig=selectedName }))
@@ -2310,16 +2400,16 @@ pcall(function()
     safariTargetUnit=data.SafariTarget or ""
     autoSafariServerHop=data.SafariHop~=false
     autoSafariSparking=data.SafariSparking~=false
-    if type(data.CampaignUnits)=="table" then autoCampaignTargetUnits=data.CampaignUnits end
-    autoCampaignFindSparking=data.CampaignSparking~=false
-    autoCampaignServerHop=data.CampaignHop~=false
     mergeTargetUnit=data.MergeTarget or ""
+    if data.WebhookUrl and data.WebhookUrl ~= "" then
+        dragonBallWebhook = data.WebhookUrl
+        if data.WebhookCooldown then webhookCooldown = data.WebhookCooldown end
+        startWebhookMonitor()  -- fires immediately on script start after server hop
+    end
     pcall(function() Window:SetToggle("AutoCollect",data.AutoCollect or false) end)
     pcall(function() Window:SetToggle("AutoHop",data.AutoHop or false) end)
     pcall(function() Window:SetToggle("AutoWish",data.AutoWish or false) end)
     pcall(function() Window:SetToggle("AutoSafari",data.AutoSafari or false) end)
-    pcall(function() Window:SetToggle("AutoCampaignEnabled",data.AutoCampaign or false) end)
-    refreshCampaignDropdown()
     if configDropdown then pcall(function() configDropdown:SetSelected(configName) end) end
     DevNgg:Notify({ Title="Auto-Loaded: "..configName, Content="Settings restored.", Duration=4 })
 end)
