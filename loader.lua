@@ -1,924 +1,1491 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>DevN.gg UI v4.4 — Redesigned</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
-<style>
-  :root {
-    --navy:       #021a50;
-    --navy-mid:   #041e64;
-    --dark:       #03112a;
-    --hdr:        #020e38;
-    --border:     rgba(100,148,255,0.25);
-    --border-foc: rgba(168,207,255,0.7);
-    --txt-a:      #ffffff;
-    --txt-b:      #c8dcff;
-    --txt-c:      #7a9fd4;
-    --accent:     #a8cfff;
-    --tog-on:     #6fffa0;
-    --tog-on-bg:  rgba(10,60,30,0.9);
-    --tog-off-bg: rgba(8,14,38,0.9);
-    --hov:        rgba(20,55,130,0.5);
-    --act:        rgba(35,80,170,0.6);
-    --red:        #ff7070;
-    --amber:      #ffc84a;
-    --glass:      rgba(4,22,74,0.52);
-    --glass-side: rgba(3,18,60,0.60);
-    --shadow:     0 24px 80px rgba(0,0,0,0.7), 0 4px 20px rgba(0,4,30,0.5);
-    --radius:     14px;
-    --radius-sm:  8px;
-  }
+-- ╔══════════════════════════════════════════════════════════════════════╗
+-- ║                  DevN.gg  UI Library  v4.4                         ║
+-- ║        Frosted Glass  ·  Soft Navy  ·  Minimalist                  ║
+-- ║             github.com/nh1cScript-gg/DevN.gg                       ║
+-- ╚══════════════════════════════════════════════════════════════════════╝
 
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+local TweenService     = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService       = game:GetService("RunService")
+local Players          = game:GetService("Players")
+local HttpService      = game:GetService("HttpService")
 
-  body {
-    background: radial-gradient(ellipse at 30% 40%, #0b1e5c 0%, #040d24 60%, #000510 100%);
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: 'Inter', sans-serif;
-    overflow: hidden;
-  }
+local player    = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
 
-  /* Stars bg */
-  body::before {
-    content:'';
-    position:fixed;inset:0;
-    background-image:
-      radial-gradient(1px 1px at 12% 18%, rgba(180,210,255,0.5) 0%, transparent 100%),
-      radial-gradient(1px 1px at 55% 7%,  rgba(180,210,255,0.4) 0%, transparent 100%),
-      radial-gradient(1.5px 1.5px at 72% 34%, rgba(180,210,255,0.35) 0%, transparent 100%),
-      radial-gradient(1px 1px at 91% 62%, rgba(180,210,255,0.3) 0%, transparent 100%),
-      radial-gradient(1px 1px at 37% 82%, rgba(180,210,255,0.4) 0%, transparent 100%),
-      radial-gradient(1px 1px at 20% 70%, rgba(180,210,255,0.25) 0%, transparent 100%);
-    pointer-events:none;z-index:0;
-  }
+-- ══════════════════════════════════════════════════════════════
+-- MOBILE DETECTION & SCALE
+-- ══════════════════════════════════════════════════════════════
+local function isMobile()
+    -- Rayfield approach: check both TouchEnabled AND screen size
+    -- Some tablets have TouchEnabled but large screens — treat those as desktop
+    if not UserInputService.TouchEnabled then return false end
+    if UserInputService.MouseEnabled then return false end
+    local vp = workspace.CurrentCamera.ViewportSize
+    return math.min(vp.X, vp.Y) < 600
+end
+-- Returns a scale multiplier: 1.0 on PC, 1.35 on mobile
+local function uiScale()
+    return isMobile() and 1.35 or 1.0
+end
+-- Scale a pixel value
+local function px(n) return math.floor(n * uiScale()) end
 
-  /* ═══════════════ WINDOW ═══════════════ */
-  .window {
-    position: relative;
-    display: flex;
-    width: 720px;
-    height: 480px;
-    background: transparent;
-    border-radius: var(--radius);
-    box-shadow: var(--shadow);
-    border: 1px solid var(--border);
-    overflow: visible;
-    z-index: 10;
-    animation: fadeIn .35s ease both;
-  }
-  @keyframes fadeIn { from { opacity:0; transform:scale(.96) translateY(8px); } to { opacity:1; transform:none; } }
+local flags         = {}
+local toggleSetters = {}
+local saveFolder    = "DevNgg"
+local saveFile      = "config"
 
-  /* ═══════════════ SIDEBAR ═══════════════ */
-  .sidebar {
-    width: 165px;
-    min-width: 165px;
-    background: var(--glass-side);
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border-right: 1px solid var(--border);
-    border-radius: var(--radius) 0 0 var(--radius);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
+-- ══════════════════════════════════════════════════════════════
+-- DROPDOWN TRACKER
+-- ══════════════════════════════════════════════════════════════
+local _openDropdowns = {}
+local function closeAllDropdowns()
+    for _,fn in ipairs(_openDropdowns) do pcall(fn) end
+    table.clear(_openDropdowns)
+end
+local function registerDropdown(fn)   table.insert(_openDropdowns,fn) end
+local function unregisterDropdown(fn)
+    for i=#_openDropdowns,1,-1 do
+        if _openDropdowns[i]==fn then table.remove(_openDropdowns,i) end
+    end
+end
 
-  .sidebar-header {
-    padding: 20px 14px 14px;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-    cursor: move;
-    user-select: none;
-  }
-  .sidebar-logo {
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-    font-size: 17px;
-    color: var(--txt-a);
-    letter-spacing: -.3px;
-    line-height: 1;
-  }
-  .sidebar-version {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-    color: var(--txt-c);
-    margin-top: 4px;
-    letter-spacing: .5px;
-  }
+-- ══════════════════════════════════════════════════════════════
+-- CONFIG
+-- ══════════════════════════════════════════════════════════════
+local function getSavePath() return saveFolder.."/"..saveFile..".json" end
+local function saveConfig()
+    pcall(function()
+        if not isfolder(saveFolder) then makefolder(saveFolder) end
+        local d={}; for k,v in pairs(flags) do d[k]=v end
+        writefile(getSavePath(),HttpService:JSONEncode(d))
+    end)
+end
+local function loadConfig()
+    local ok,r=pcall(function()
+        if isfolder(saveFolder) and isfile(getSavePath()) then
+            return HttpService:JSONDecode(readfile(getSavePath()))
+        end
+        return {}
+    end)
+    return (ok and r) or {}
+end
 
-  .sidebar-nav {
-    flex: 1;
-    overflow-y: auto;
-    padding: 10px 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(168,207,255,0.2) transparent;
-  }
-  .sidebar-nav::-webkit-scrollbar { width: 3px; }
-  .sidebar-nav::-webkit-scrollbar-thumb { background: rgba(168,207,255,0.25); border-radius: 99px; }
+-- ══════════════════════════════════════════════════════════════
+-- SAFE GUI PARENTING
+-- ══════════════════════════════════════════════════════════════
+local function safeParent(gui)
+    -- Try CoreGui first (works in most executors)
+    local ok=pcall(function() gui.Parent=game:GetService("CoreGui") end)
+    if ok and gui.Parent then return end
+    -- Fallback to gethui() if available
+    ok=pcall(function() gui.Parent=gethui() end)
+    if ok and gui.Parent then return end
+    -- Last resort: PlayerGui
+    gui.Parent=playerGui
+end
 
-  .tab-btn {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    padding: 9px 10px;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: background .15s, color .15s;
-    border: none;
-    background: transparent;
-    width: 100%;
-    text-align: left;
-    color: var(--txt-c);
-    font-family: 'Inter', sans-serif;
-    font-size: 13px;
-    font-weight: 500;
-    position: relative;
-  }
-  .tab-btn:hover { background: var(--hov); color: var(--txt-b); }
-  .tab-btn.active {
-    background: rgba(255,255,255,0.95);
-    color: var(--navy);
-    font-weight: 600;
-  }
-  .tab-btn.active .tab-icon { color: var(--navy); }
-  .tab-icon {
-    font-size: 15px;
-    width: 18px;
-    text-align: center;
-    flex-shrink: 0;
-    transition: color .15s;
-  }
+-- ══════════════════════════════════════════════════════════════
+-- COLOURS  — Frosted glass navy theme
+-- HIGH BackgroundTransparency (0.45-0.55) so the blurred game
+-- world is VISIBLE behind every panel.
+-- ══════════════════════════════════════════════════════════════
+local C = {
+    NAVY         = Color3.fromRGB(3,   34,  80),   -- #022658 base navy
+    DARK         = Color3.fromRGB(6,   14,  38),   -- darker navy for content
+    HDR          = Color3.fromRGB(2,   20,  56),   -- header/footer tint
 
-  .sidebar-footer {
-    padding: 10px;
-    border-top: 1px solid var(--border);
-    font-size: 10px;
-    color: var(--txt-c);
-    text-align: center;
-    font-family: 'JetBrains Mono', monospace;
-    letter-spacing: .5px;
-    flex-shrink: 0;
-  }
+    TAB_ON_BG    = Color3.fromRGB(255, 255, 255),  -- active tab: white pill
+    TAB_ON_FG    = Color3.fromRGB(3,   34,  80),   -- active tab: navy text
+    TAB_OFF      = Color3.fromRGB(175, 208, 255),  -- idle tab text
 
-  /* ═══════════════ CONTENT ═══════════════ */
-  .content {
-    flex: 1;
-    background: var(--glass);
-    backdrop-filter: blur(24px) saturate(160%);
-    -webkit-backdrop-filter: blur(24px) saturate(160%);
-    border-radius: 0 var(--radius) var(--radius) 0;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
+    BORDER       = Color3.fromRGB(90,  130, 210),  -- subtle border
+    BORDER_FOC   = Color3.fromRGB(168, 207, 255),  -- focused border
 
-  .content-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 16px;
-    height: 50px;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-    cursor: move;
-    user-select: none;
-  }
-  .content-title {
-    font-family: 'Syne', sans-serif;
-    font-size: 16px;
-    font-weight: 700;
-    color: var(--txt-a);
-    letter-spacing: -.3px;
-  }
+    -- TEXT — all bright for legibility on glass
+    TXT_A        = Color3.fromRGB(255, 255, 255),  -- white: titles, active
+    TXT_B        = Color3.fromRGB(205, 222, 255),  -- soft white: labels
+    TXT_C        = Color3.fromRGB(130, 165, 220),  -- muted: hints, footer
 
-  .win-controls { display: flex; gap: 6px; }
-  .win-btn {
-    width: 26px; height: 26px;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    background: rgba(4,22,74,0.5);
-    color: var(--txt-c);
-    font-size: 14px;
-    line-height: 1;
-    cursor: pointer;
-    transition: background .15s, color .15s, border-color .15s;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .win-btn:hover { background: var(--hov); }
-  .win-btn.close:hover { color: var(--red); border-color: var(--red); }
-  .win-btn.min:hover   { color: var(--amber); border-color: var(--amber); }
+    -- Accent
+    ACCENT       = Color3.fromRGB(168, 207, 255),  -- pale periwinkle
 
-  .content-body {
-    flex: 1;
-    overflow-y: auto;
-    padding: 18px 18px 18px;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(168,207,255,0.2) transparent;
-  }
-  .content-body::-webkit-scrollbar { width: 4px; }
-  .content-body::-webkit-scrollbar-thumb { background: rgba(168,207,255,0.2); border-radius: 99px; }
+    -- Toggle
+    TOG_ON       = Color3.fromRGB(150, 225, 175),  -- soft mint
+    TOG_ON_BG    = Color3.fromRGB(10,  44,  26),
+    TOG_OFF_BG   = Color3.fromRGB(8,   12,  28),
+    TOG_KNOB_OFF = Color3.fromRGB(110, 140, 190),
 
-  /* ═══════════════ TAB PANEL ═══════════════ */
-  .tab-panel { display: none; flex-direction: column; gap: 6px; }
-  .tab-panel.active { display: flex; }
+    -- Interactions
+    HOV          = Color3.fromRGB(18,  48, 108),
+    ACT          = Color3.fromRGB(30,  68, 148),
 
-  /* Section label */
-  .section-label {
-    font-family: 'Syne', sans-serif;
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--txt-c);
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    padding: 10px 0 4px;
-  }
-  .section-label:first-child { padding-top: 0; }
+    RED          = Color3.fromRGB(255, 105, 105),
+    AMBER        = Color3.fromRGB(255, 195,  75),
+}
 
-  /* ═══════════════ ROWS ═══════════════ */
-  .row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: rgba(5,18,60,0.55);
-    border: 1px solid rgba(80,120,210,0.25);
-    border-radius: var(--radius-sm);
-    padding: 10px 14px;
-    gap: 12px;
-    transition: background .15s, border-color .15s;
-    min-height: 46px;
-  }
-  .row:hover { background: var(--hov); border-color: rgba(130,170,255,0.35); }
-  .row-label {
-    font-size: 13px;
-    color: var(--txt-b);
-    font-weight: 500;
-    flex: 1;
-    min-width: 0;
-  }
-  .row-label .sub {
-    display: block;
-    font-size: 10px;
-    color: var(--txt-c);
-    font-weight: 400;
-    margin-top: 2px;
-  }
+-- Transparency — HIGH so glass effect is actually visible
+local T = {
+    SIDE   = 0.35,  -- sidebar
+    CONT   = 0.40,  -- content panel
+    SURF   = 0.42,  -- cards / rows
+    HDR    = 0.30,  -- header strips
+    NOTIF  = 0.20,
+    CTRL   = 0.45,  -- window control buttons
+}
 
-  /* ═══════════════ TOGGLE ═══════════════ */
-  .toggle-wrap { position: relative; width: 40px; height: 22px; flex-shrink: 0; }
-  .toggle-wrap input { opacity:0; width:0; height:0; position:absolute; }
-  .toggle-slider {
-    position: absolute; inset: 0;
-    background: var(--tog-off-bg);
-    border: 1px solid rgba(80,120,210,0.4);
-    border-radius: 99px;
-    cursor: pointer;
-    transition: background .2s, border-color .2s;
-  }
-  .toggle-slider::after {
-    content:'';
-    position: absolute;
-    width: 16px; height: 16px;
-    background: #7090c0;
-    border-radius: 50%;
-    top: 2px; left: 2px;
-    transition: transform .2s, background .2s;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
-  }
-  .toggle-wrap input:checked + .toggle-slider { background: var(--tog-on-bg); border-color: rgba(80,255,120,0.35); }
-  .toggle-wrap input:checked + .toggle-slider::after { transform: translateX(18px); background: var(--tog-on); }
+local FAST = TweenInfo.new(0.10,Enum.EasingStyle.Quint)
+local MED  = TweenInfo.new(0.20,Enum.EasingStyle.Quint)
+local function tw(o,i,p) TweenService:Create(o,i,p):Play() end
 
-  /* ═══════════════ DROPDOWN ═══════════════ */
-  .dropdown { position: relative; flex-shrink: 0; }
-  .dropdown-btn {
-    display: flex; align-items: center; gap: 8px;
-    background: rgba(3,12,40,0.8);
-    border: 1px solid rgba(80,120,210,0.35);
-    border-radius: var(--radius-sm);
-    padding: 7px 10px;
-    color: var(--txt-b);
-    font-size: 12px;
-    font-family: 'Inter', sans-serif;
-    cursor: pointer;
-    transition: border-color .15s, background .15s;
-    white-space: nowrap;
-    min-width: 120px;
-    justify-content: space-between;
-    user-select: none;
-  }
-  .dropdown-btn:hover { border-color: var(--border-foc); background: rgba(10,30,80,0.8); }
-  .dropdown-btn.open { border-color: var(--border-foc); background: rgba(10,30,80,0.9); }
-  .dropdown-arrow { font-size: 10px; color: var(--txt-c); transition: transform .2s; flex-shrink: 0; }
-  .dropdown-btn.open .dropdown-arrow { transform: rotate(180deg); }
+-- Safe font lookup — GothamLight/RobotoMono may not exist in all executors
+local function safeFont(name, fallback)
+    local ok,f=pcall(function() return Enum.Font[name] end)
+    return (ok and f) or Enum.Font[fallback]
+end
+local F = {
+    TITLE = Enum.Font.GothamBold,
+    HEAD  = Enum.Font.GothamSemibold,
+    BODY  = Enum.Font.Gotham,
+    LIGHT = safeFont("GothamLight",   "Gotham"),
+    MONO  = safeFont("RobotoMono",    "Code"),
+}
 
-  .dropdown-menu {
-    position: absolute;
-    top: calc(100% + 4px);
-    right: 0;
-    min-width: 100%;
-    background: rgba(3,14,46,0.97);
-    border: 1px solid var(--border-foc);
-    border-radius: var(--radius-sm);
-    box-shadow: 0 12px 40px rgba(0,0,0,0.6);
-    z-index: 1000;
-    overflow: hidden;
-    display: none;
-    flex-direction: column;
-    backdrop-filter: blur(20px);
-    animation: ddOpen .15s ease both;
-  }
-  @keyframes ddOpen { from { opacity:0; transform:translateY(-6px) scaleY(.9); } to { opacity:1; transform:none; } }
-  .dropdown-menu.open { display: flex; }
+-- ══════════════════════════════════════════════════════════════
+-- HELPERS
+-- ══════════════════════════════════════════════════════════════
+local function make(class,props,parent)
+    local obj=Instance.new(class)
+    for k,v in pairs(props or {}) do obj[k]=v end
+    if parent then obj.Parent=parent end
+    return obj
+end
+local function corner(p,r) make("UICorner",{CornerRadius=UDim.new(0,r or 8)},p) end
+local function stroke(p,col,th,tr)
+    return make("UIStroke",{
+        Color=col or C.BORDER, Thickness=th or 1, Transparency=tr or 0,
+        ApplyStrokeMode=Enum.ApplyStrokeMode.Border,
+    },p)
+end
+local function pad(p,t,b,l,r)
+    make("UIPadding",{
+        PaddingTop=UDim.new(0,t or 0),PaddingBottom=UDim.new(0,b or 0),
+        PaddingLeft=UDim.new(0,l or 0),PaddingRight=UDim.new(0,r or 0),
+    },p)
+end
+local function listL(p,sp,dir,ha,va)
+    return make("UIListLayout",{
+        SortOrder=Enum.SortOrder.LayoutOrder,
+        FillDirection=dir or Enum.FillDirection.Vertical,
+        HorizontalAlignment=ha or Enum.HorizontalAlignment.Left,
+        VerticalAlignment=va or Enum.VerticalAlignment.Top,
+        Padding=UDim.new(0,sp or 0),
+    },p)
+end
 
-  .dropdown-item {
-    padding: 9px 12px;
-    font-size: 12px;
-    color: var(--txt-b);
-    cursor: pointer;
-    transition: background .1s, color .1s;
-    white-space: nowrap;
-    font-family: 'Inter', sans-serif;
-  }
-  .dropdown-item:hover { background: var(--hov); color: var(--txt-a); }
-  .dropdown-item.selected { color: var(--accent); font-weight: 600; }
+-- ══════════════════════════════════════════════════════════════
+-- MODULE
+-- ══════════════════════════════════════════════════════════════
+local mainFrame  = nil
+local guiVisible = true
+local DevNgg     = {}
 
-  /* ═══════════════ SLIDER ═══════════════ */
-  .slider-wrap { display: flex; align-items: center; gap: 10px; flex-shrink: 0; width: 160px; }
-  .slider-val {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    color: var(--accent);
-    width: 30px;
-    text-align: right;
-    flex-shrink: 0;
-  }
-  input[type=range] {
-    -webkit-appearance: none;
-    flex: 1;
-    height: 4px;
-    background: rgba(80,120,210,0.3);
-    border-radius: 99px;
-    outline: none;
-    cursor: pointer;
-  }
-  input[type=range]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 14px; height: 14px;
-    background: var(--accent);
-    border-radius: 50%;
-    box-shadow: 0 0 8px rgba(168,207,255,0.5);
-    transition: box-shadow .15s;
-  }
-  input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 14px rgba(168,207,255,0.8); }
+-- setBlur is a no-op: no Lighting effect, no overlay.
+-- Frosted-glass look comes purely from panel BackgroundTransparency values.
+local function setBlur(_on) end
 
-  /* ═══════════════ BUTTON ═══════════════ */
-  .action-btn {
-    padding: 8px 18px;
-    background: rgba(168,207,255,0.12);
-    border: 1px solid rgba(168,207,255,0.3);
-    border-radius: var(--radius-sm);
-    color: var(--accent);
-    font-size: 12px;
-    font-family: 'Inter', sans-serif;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background .15s, border-color .15s, color .15s;
-    white-space: nowrap;
-    flex-shrink: 0;
-    letter-spacing: .3px;
-  }
-  .action-btn:hover { background: rgba(168,207,255,0.22); border-color: var(--border-foc); color: #fff; }
-  .action-btn:active { background: rgba(168,207,255,0.3); }
 
-  /* Badge */
-  .badge {
-    font-size: 10px;
-    font-family: 'JetBrains Mono', monospace;
-    background: rgba(168,207,255,0.1);
-    border: 1px solid rgba(168,207,255,0.2);
-    color: var(--accent);
-    padding: 2px 7px;
-    border-radius: 99px;
-    flex-shrink: 0;
-  }
+function DevNgg:SetVisibility(val)
+    guiVisible=val
+    if mainFrame then mainFrame.Visible=val end
+    setBlur(val)
+    if not val then closeAllDropdowns() end
+end
+function DevNgg:IsVisible() return guiVisible end
+function DevNgg:Destroy()
+    pcall(function() if mainFrame and mainFrame.Parent then mainFrame.Parent:Destroy() end end)
+end
 
-  /* ═══════════════ NOTIFICATION ═══════════════ */
-  .notif-area {
-    position: fixed;
-    bottom: 18px; right: 18px;
-    display: flex; flex-direction: column-reverse; gap: 8px;
-    z-index: 999;
-    pointer-events: none;
-  }
-  .notif {
-    background: rgba(4,18,58,0.95);
-    border: 1px solid var(--border-foc);
-    border-radius: var(--radius-sm);
-    padding: 12px 14px;
-    width: 260px;
-    backdrop-filter: blur(16px);
-    animation: notifIn .25s ease both;
-    pointer-events: auto;
-    position: relative;
-    overflow: hidden;
-  }
-  @keyframes notifIn { from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:none} }
-  .notif-bar { position: absolute; left: 0; top: 10%; bottom: 10%; width: 3px; background: var(--accent); border-radius: 0 2px 2px 0; }
-  .notif-title { font-size: 12px; font-weight: 600; color: var(--txt-a); font-family:'Syne',sans-serif; }
-  .notif-body  { font-size: 11px; color: var(--txt-b); margin-top: 3px; }
-  .notif-progress { position:absolute; bottom:0; left:0; height:2px; background:var(--accent); border-radius:99px; animation: notifProg 3s linear both; }
-  @keyframes notifProg { from{width:100%} to{width:0} }
-</style>
-</head>
-<body>
+-- ══════════════════════════════════════════════════════════════
+-- NOTIFICATIONS
+-- ══════════════════════════════════════════════════════════════
+local notifGui=make("ScreenGui",{
+    Name="DevNggNotif",ResetOnSpawn=false,
+    ZIndexBehavior=Enum.ZIndexBehavior.Sibling,DisplayOrder=999,
+})
+pcall(function() notifGui.IgnoreGuiInset=true end)
+safeParent(notifGui)
 
-<!-- MAIN WINDOW -->
-<div class="window" id="window">
+local _isMobileNotif = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+local _nW  = _isMobileNotif and 200 or 285
+local _nOff = _isMobileNotif and (_nW+8) or 298
+local _nCardH = _isMobileNotif and 52 or 66
+local _nBarH  = _isMobileNotif and 24 or 32
+local _nTitleS = _isMobileNotif and 11 or 13
+local _nBodyS  = _isMobileNotif and 10 or 11
 
-  <!-- SIDEBAR -->
-  <div class="sidebar">
-    <div class="sidebar-header" id="dragHandle">
-      <div class="sidebar-logo">DevN.gg</div>
-      <div class="sidebar-version">v4.4 · Frosted Glass</div>
-    </div>
+local nHolder=make("Frame",{
+    Size=UDim2.new(0,_nW,1,0),Position=UDim2.new(1,-_nOff,0,0),
+    BackgroundTransparency=1,
+},notifGui)
+listL(nHolder,4,Enum.FillDirection.Vertical,
+    Enum.HorizontalAlignment.Right,Enum.VerticalAlignment.Bottom)
+pad(nHolder,0,10,0,0)
 
-    <nav class="sidebar-nav">
-      <button class="tab-btn" data-tab="main" onclick="switchTab('main',this)">
-        <span class="tab-icon">⌂</span> Main
-      </button>
-      <button class="tab-btn active" data-tab="autofarm" onclick="switchTab('autofarm',this)">
-        <span class="tab-icon">⚡</span> Auto Farm
-      </button>
-      <button class="tab-btn" data-tab="boss" onclick="switchTab('boss',this)">
-        <span class="tab-icon">☠</span> Boss
-      </button>
-      <button class="tab-btn" data-tab="dungeon" onclick="switchTab('dungeon',this)">
-        <span class="tab-icon">⬡</span> Dungeon
-      </button>
-      <button class="tab-btn" data-tab="stats" onclick="switchTab('stats',this)">
-        <span class="tab-icon">↗</span> Stats
-      </button>
-      <button class="tab-btn" data-tab="teleport" onclick="switchTab('teleport',this)">
-        <span class="tab-icon">◈</span> Teleport
-      </button>
-      <button class="tab-btn" data-tab="trade" onclick="switchTab('trade',this)">
-        <span class="tab-icon">⇆</span> Trade
-      </button>
-      <button class="tab-btn" data-tab="settings" onclick="switchTab('settings',this)">
-        <span class="tab-icon">⚙</span> Settings
-      </button>
-    </nav>
+local nCount=0
 
-    <div class="sidebar-footer">[ K ] Toggle UI</div>
-  </div>
+function DevNgg:Notify(cfg)
+    if nCount>=5 then return end; nCount+=1
+    local title=cfg.Title or "DevN.gg"
+    local body =cfg.Content or ""
+    local dur  =cfg.Duration or 3
 
-  <!-- CONTENT -->
-  <div class="content">
-    <div class="content-header" id="dragHandle2">
-      <div class="content-title" id="contentTitle">Auto Farm</div>
-      <div class="win-controls">
-        <button class="win-btn min" title="Minimise" onclick="showNotif('UI','Window minimised.')">−</button>
-        <button class="win-btn close" title="Close" onclick="showNotif('UI','Window hidden. Press K to reopen.')">×</button>
-      </div>
-    </div>
+    local card=make("Frame",{
+        Size=UDim2.new(1,0,0,_nCardH),BackgroundColor3=C.NAVY,
+        BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=true,
+    },nHolder); corner(card,8)
+    local cs=stroke(card,C.BORDER,1,1)
 
-    <div class="content-body">
+    local bar=make("Frame",{
+        Size=UDim2.new(0,3,0,_nBarH),Position=UDim2.new(0,0,0.5,-_nBarH/2),
+        BackgroundColor3=C.ACCENT,BackgroundTransparency=1,BorderSizePixel=0,
+    },card); corner(bar,2)
 
-      <!-- ══ AUTO FARM TAB ══ -->
-      <div class="tab-panel active" id="tab-autofarm">
+    local tL=make("TextLabel",{
+        Size=UDim2.new(1,-16,0,_isMobileNotif and 16 or 20),Position=UDim2.new(0,10,0,_isMobileNotif and 8 or 11),
+        BackgroundTransparency=1,Text=title,TextColor3=C.TXT_A,
+        TextTransparency=1,TextSize=_nTitleS,Font=F.HEAD,
+        TextXAlignment=Enum.TextXAlignment.Left,
+    },card)
+    local sL=make("TextLabel",{
+        Size=UDim2.new(1,-16,0,_isMobileNotif and 14 or 18),Position=UDim2.new(0,10,0,_isMobileNotif and 26 or 33),
+        BackgroundTransparency=1,Text=body,TextColor3=C.TXT_B,
+        TextTransparency=1,TextSize=_nBodyS,Font=F.BODY,
+        TextXAlignment=Enum.TextXAlignment.Left,TextWrapped=true,
+    },card)
+    local pb=make("Frame",{
+        Size=UDim2.new(1,0,0,2),Position=UDim2.new(0,0,1,-2),
+        BackgroundColor3=C.BORDER,BorderSizePixel=0,
+    },card)
+    local pf=make("Frame",{Size=UDim2.new(1,0,1,0),BackgroundColor3=C.ACCENT,BorderSizePixel=0},pb)
 
-        <div class="row">
-          <div class="row-label">Auto Equip Weapon</div>
-          <label class="toggle-wrap">
-            <input type="checkbox" checked onchange="onToggle(this,'autoEquip')"/>
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
+    tw(card,MED,{BackgroundTransparency=0})
+    tw(cs,MED,{Transparency=0}); tw(bar,MED,{BackgroundTransparency=0})
+    tw(tL,MED,{TextTransparency=0}); tw(sL,MED,{TextTransparency=0})
+    tw(pf,TweenInfo.new(dur,Enum.EasingStyle.Linear),{Size=UDim2.new(0,0,1,0)})
 
-        <div class="section-label">Method Farm</div>
+    task.delay(dur,function()
+        tw(card,MED,{BackgroundTransparency=1}); tw(cs,MED,{Transparency=1})
+        tw(bar,MED,{BackgroundTransparency=1})
+        tw(tL,MED,{TextTransparency=1}); tw(sL,MED,{TextTransparency=1})
+        task.wait(0.22); card:Destroy(); nCount-=1
+    end)
+end
 
-        <div class="row">
-          <div class="row-label">
-            Farm Method
-            <span class="sub">เลือกตาราวปที่จะฟาร์ม</span>
-          </div>
-          <div class="dropdown" id="dd-farmmethod">
-            <div class="dropdown-btn" onclick="toggleDropdown('dd-farmmethod')">
-              <span class="dd-val">TP</span>
-              <span class="dropdown-arrow">▾</span>
-            </div>
-            <div class="dropdown-menu">
-              <div class="dropdown-item selected" onclick="selectDD('dd-farmmethod','TP',this)">TP</div>
-              <div class="dropdown-item" onclick="selectDD('dd-farmmethod','Walk',this)">Walk</div>
-              <div class="dropdown-item" onclick="selectDD('dd-farmmethod','Fly',this)">Fly</div>
-            </div>
-          </div>
-        </div>
+-- ══════════════════════════════════════════════════════════════
+-- CREATE WINDOW
+-- ══════════════════════════════════════════════════════════════
+function DevNgg:CreateWindow(config)
+    local winTitle  = config.Name              or "DevN.gg"
+    local winSub    = (config.Subtitle ~= nil) and config.Subtitle or "by DevN.gg"
+    local winVer    = (config.Version ~= nil) and config.Version or "v1.0"
+    local toggleKey = config.ToggleUIKeybind   or "K"
+    local loadTitle = config.LoadingTitle      or winTitle
+    local loadSub   = config.LoadingSubtitle   or "Loading..."
 
-        <div class="section-label">Mob Farm</div>
+    if config.ConfigurationSaving and config.ConfigurationSaving.Enabled then
+        saveFolder=config.ConfigurationSaving.FolderName or saveFolder
+        saveFile  =config.ConfigurationSaving.FileName   or saveFile
+    end
 
-        <div class="row">
-          <div class="row-label">
-            Select Mob
-          </div>
-          <div class="dropdown" id="dd-mob">
-            <div class="dropdown-btn" onclick="toggleDropdown('dd-mob')">
-              <span class="dd-val">Quincy (Lv. 10750)</span>
-              <span class="dropdown-arrow">▾</span>
-            </div>
-            <div class="dropdown-menu">
-              <div class="dropdown-item selected" onclick="selectDD('dd-mob','Quincy (Lv. 10750)',this)">Quincy (Lv. 10750)</div>
-              <div class="dropdown-item" onclick="selectDD('dd-mob','Hollow (Lv. 9800)',this)">Hollow (Lv. 9800)</div>
-              <div class="dropdown-item" onclick="selectDD('dd-mob','Shinigami (Lv. 11200)',this)">Shinigami (Lv. 11200)</div>
-              <div class="dropdown-item" onclick="selectDD('dd-mob','Espada (Lv. 15000)',this)">Espada (Lv. 15000)</div>
-              <div class="dropdown-item" onclick="selectDD('dd-mob','Arrancar (Lv. 12400)',this)">Arrancar (Lv. 12400)</div>
-            </div>
-          </div>
-        </div>
+    -- ── ScreenGui ─────────────────────────────────────────────
+    local sg=make("ScreenGui",{
+        Name="DevNggGUI",ResetOnSpawn=false,
+        ZIndexBehavior=Enum.ZIndexBehavior.Sibling,DisplayOrder=100,
+    })
+    pcall(function() sg.IgnoreGuiInset=true end)
+    safeParent(sg)
 
-        <div class="row">
-          <div class="row-label">Auto Farm</div>
-          <label class="toggle-wrap">
-            <input type="checkbox" checked onchange="onToggle(this,'autoFarm')"/>
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
+    -- Close dropdowns when tapping outside: use UserInputService instead of overlay
+    -- (overlay blocks Roblox touch input — never use a fullscreen TextButton)
+    -- Close dropdowns when tapping outside the window on mobile
+    if isMobile() then
+        UserInputService.InputBegan:Connect(function(input, processed)
+            if processed then return end
+            if input.UserInputType ~= Enum.UserInputType.Touch then return end
+            local pos = input.Position
+            local mp  = main.AbsolutePosition
+            local ms  = main.AbsoluteSize
+            if pos.X < mp.X or pos.X > mp.X+ms.X or pos.Y < mp.Y or pos.Y > mp.Y+ms.Y then
+                closeAllDropdowns()
+            end
+        end)
+    end
 
-        <div class="row">
-          <div class="row-label">
-            Auto Farm Level
-            <span class="sub">ฟาร์มตามเลเวลอัตโนมัติ</span>
-          </div>
-          <label class="toggle-wrap">
-            <input type="checkbox" onchange="onToggle(this,'autoFarmLevel')"/>
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
+    -- ── Loading bar ───────────────────────────────────────────
+    -- Shown immediately (no delay), destroyed after ~1.5s
+    local lf=make("Frame",{
+        Size=UDim2.new(0,340,0,110),Position=UDim2.new(0.5,-170,0.5,-55),
+        BackgroundColor3=C.NAVY,BackgroundTransparency=T.SIDE,
+        BorderSizePixel=0,ZIndex=50,
+    },sg); corner(lf,12); stroke(lf,C.BORDER,1,0.4)
 
-        <div class="row">
-          <div class="row-label">
-            Farm Position
-            <span class="sub">ตำแหน่งฟาร์ม</span>
-          </div>
-          <div class="dropdown" id="dd-position">
-            <div class="dropdown-btn" onclick="toggleDropdown('dd-position')">
-              <span class="dd-val">Behind</span>
-              <span class="dropdown-arrow">▾</span>
-            </div>
-            <div class="dropdown-menu">
-              <div class="dropdown-item selected" onclick="selectDD('dd-position','Behind',this)">Behind</div>
-              <div class="dropdown-item" onclick="selectDD('dd-position','Front',this)">Front</div>
-              <div class="dropdown-item" onclick="selectDD('dd-position','Right',this)">Right</div>
-              <div class="dropdown-item" onclick="selectDD('dd-position','Left',this)">Left</div>
-            </div>
-          </div>
-        </div>
+    make("TextLabel",{
+        Size=UDim2.new(1,-28,0,22),Position=UDim2.new(0,14,0,16),
+        BackgroundTransparency=1,Text=loadTitle,TextColor3=C.TXT_A,
+        TextSize=16,Font=F.TITLE,TextXAlignment=Enum.TextXAlignment.Center,ZIndex=51,
+    },lf)
+    make("TextLabel",{
+        Size=UDim2.new(1,-28,0,14),Position=UDim2.new(0,14,0,42),
+        BackgroundTransparency=1,Text=loadSub,TextColor3=C.TXT_C,
+        TextSize=11,Font=F.LIGHT,TextXAlignment=Enum.TextXAlignment.Center,ZIndex=51,
+    },lf)
 
-        <div class="section-label">All Mob Farm</div>
+    local pt=make("Frame",{
+        Size=UDim2.new(1,-28,0,2),Position=UDim2.new(0,14,0,68),
+        BackgroundColor3=C.BORDER,BorderSizePixel=0,ZIndex=51,
+    },lf); corner(pt,2)
+    local pBar=make("Frame",{Size=UDim2.new(0,0,1,0),BackgroundColor3=C.ACCENT,BorderSizePixel=0,ZIndex=52},pt)
+    corner(pBar,2)
 
-        <div class="row">
-          <div class="row-label">Farm All Mobs in Area</div>
-          <label class="toggle-wrap">
-            <input type="checkbox" onchange="onToggle(this,'allMobFarm')"/>
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
+    local lStat=make("TextLabel",{
+        Size=UDim2.new(1,-28,0,14),Position=UDim2.new(0,14,0,78),
+        BackgroundTransparency=1,Text="Loading...",TextColor3=C.TXT_C,
+        TextSize=10,Font=F.LIGHT,TextXAlignment=Enum.TextXAlignment.Center,ZIndex=51,
+    },lf)
 
-        <div class="row">
-          <div class="row-label">
-            Farm Radius
-          </div>
-          <div class="slider-wrap">
-            <input type="range" min="10" max="200" value="60" oninput="this.nextElementSibling.textContent=this.value"/>
-            <span class="slider-val">60</span>
-          </div>
-        </div>
+    -- ── Main window ────────────────────────────────────────────
+    local mobile = isMobile()
+    local vp     = workspace.CurrentCamera.ViewportSize
+    -- Detect landscape vs portrait on mobile
+    local isLandscape = mobile and (vp.X > vp.Y) or false
 
-      </div>
+    -- Landscape mobile: tall left-side panel like the original look
+    -- Portrait mobile: compact centered panel
+    local SW, WW, WH, mainPosXS, mainPosX, mainPosYS, mainPosY
+    if not mobile then
+        SW = 175; WW = 610; WH = 420
+        mainPosXS = 0.5; mainPosX = -WW/2
+        mainPosYS = 0.5; mainPosY = -WH/2
+    elseif isLandscape then
+        SW = 72
+        WW = math.min(math.floor(vp.X * 0.52), 420)
+        WH = math.min(math.floor(vp.Y * 0.88), math.floor(vp.Y - 20))
+        -- Left side, vertically centered
+        mainPosXS = 0; mainPosX = 10
+        mainPosYS = 0.5; mainPosY = -WH/2
+    else
+        -- Portrait: compact centered
+        SW = 68
+        WW = math.min(math.floor(vp.X * 0.72), 260)
+        WH = math.min(math.floor(vp.Y * 0.44), 220)
+        mainPosXS = 0.5; mainPosX = -WW/2
+        mainPosYS = 0.5; mainPosY = -WH/2 - 20
+    end
+    local main=make("Frame",{
+        Name="Main",Size=UDim2.new(0,WW,0,WH),
+        Position=UDim2.new(mainPosXS,mainPosX,mainPosYS,mainPosY),
+        BackgroundColor3=C.DARK,BackgroundTransparency=T.CONT,
+        BorderSizePixel=0,ClipsDescendants=false,
+        Visible=false,
+    },sg)
+    corner(main, mobile and 8 or 12); stroke(main,C.BORDER,1,0.5)
+    mainFrame=main
 
-      <!-- ══ MAIN TAB ══ -->
-      <div class="tab-panel" id="tab-main">
-        <div class="section-label">Overview</div>
-        <div class="row">
-          <div class="row-label">Auto Save Config</div>
-          <label class="toggle-wrap">
-            <input type="checkbox" checked onchange="onToggle(this,'autoSave')"/>
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <div class="row">
-          <div class="row-label">
-            Script Version
-          </div>
-          <span class="badge">v4.4</span>
-        </div>
-        <div class="row">
-          <div class="row-label">Load Configuration</div>
-          <button class="action-btn" onclick="showNotif('Config','Configuration loaded.')">Load</button>
-        </div>
-        <div class="row">
-          <div class="row-label">Save Configuration</div>
-          <button class="action-btn" onclick="showNotif('Config','Configuration saved.')">Save</button>
-        </div>
-      </div>
+    -- Shadow
+    make("ImageLabel",{
+        AnchorPoint=Vector2.new(0.5,0.5),
+        Size=UDim2.new(1,80,1,80),Position=UDim2.new(0.5,0,0.5,12),
+        BackgroundTransparency=1,Image="rbxassetid://6014054385",
+        ImageColor3=Color3.fromRGB(0,10,40),ImageTransparency=0.5,
+        ScaleType=Enum.ScaleType.Slice,SliceCenter=Rect.new(49,49,450,450),ZIndex=0,
+    },main)
 
-      <!-- ══ BOSS TAB ══ -->
-      <div class="tab-panel" id="tab-boss">
-        <div class="section-label">Boss Farm</div>
-        <div class="row">
-          <div class="row-label">Auto Boss Farm</div>
-          <label class="toggle-wrap">
-            <input type="checkbox" onchange="onToggle(this,'bossFarm')"/>
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <div class="row">
-          <div class="row-label">Select Boss</div>
-          <div class="dropdown" id="dd-boss">
-            <div class="dropdown-btn" onclick="toggleDropdown('dd-boss')">
-              <span class="dd-val">Aizen</span>
-              <span class="dropdown-arrow">▾</span>
-            </div>
-            <div class="dropdown-menu">
-              <div class="dropdown-item selected" onclick="selectDD('dd-boss','Aizen',this)">Aizen</div>
-              <div class="dropdown-item" onclick="selectDD('dd-boss','Yhwach',this)">Yhwach</div>
-              <div class="dropdown-item" onclick="selectDD('dd-boss','Barragan',this)">Barragan</div>
-              <div class="dropdown-item" onclick="selectDD('dd-boss','Ulquiorra',this)">Ulquiorra</div>
-            </div>
-          </div>
-        </div>
-        <div class="row">
-          <div class="row-label">Auto Rejoin on Death</div>
-          <label class="toggle-wrap">
-            <input type="checkbox" checked onchange="onToggle(this,'bossRejoin')"/>
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-      </div>
+    -- ── Sidebar ────────────────────────────────────────────────
+    local side=make("Frame",{
+        Name="Sidebar",Size=UDim2.new(0,SW,1,0),
+        BackgroundColor3=C.NAVY,BackgroundTransparency=T.SIDE,
+        BorderSizePixel=0,ZIndex=3,ClipsDescendants=true,
+    },main); corner(side,12)
 
-      <!-- ══ DUNGEON TAB ══ -->
-      <div class="tab-panel" id="tab-dungeon">
-        <div class="section-label">Dungeon</div>
-        <div class="row">
-          <div class="row-label">Auto Clear Dungeon</div>
-          <label class="toggle-wrap">
-            <input type="checkbox" onchange="onToggle(this,'autoDungeon')"/>
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <div class="row">
-          <div class="row-label">Dungeon Floor</div>
-          <div class="dropdown" id="dd-dungeon">
-            <div class="dropdown-btn" onclick="toggleDropdown('dd-dungeon')">
-              <span class="dd-val">Floor 10</span>
-              <span class="dropdown-arrow">▾</span>
-            </div>
-            <div class="dropdown-menu">
-              <div class="dropdown-item" onclick="selectDD('dd-dungeon','Floor 1',this)">Floor 1</div>
-              <div class="dropdown-item" onclick="selectDD('dd-dungeon','Floor 5',this)">Floor 5</div>
-              <div class="dropdown-item selected" onclick="selectDD('dd-dungeon','Floor 10',this)">Floor 10</div>
-              <div class="dropdown-item" onclick="selectDD('dd-dungeon','Floor 20',this)">Floor 20</div>
-            </div>
-          </div>
-        </div>
-      </div>
+    -- Cover sidebar's top-right and bottom-right rounded corners
+    -- These are SIBLINGS on main so ClipsDescendants doesn't affect them
+    make("Frame",{
+        Size=UDim2.new(0,12,0,12),Position=UDim2.new(0,SW-12,0,0),
+        BackgroundColor3=C.NAVY,BackgroundTransparency=T.SIDE,
+        BorderSizePixel=0,ZIndex=5,
+    },main)
+    make("Frame",{
+        Size=UDim2.new(0,12,0,12),Position=UDim2.new(0,SW-12,1,-12),
+        BackgroundColor3=C.NAVY,BackgroundTransparency=T.SIDE,
+        BorderSizePixel=0,ZIndex=5,
+    },main)
+    -- Right divider line
+    make("Frame",{
+        Size=UDim2.new(0,1,1,0),Position=UDim2.new(0,SW,0,0),
+        BackgroundColor3=C.BORDER,BackgroundTransparency=0.4,BorderSizePixel=0,ZIndex=6,
+    },main)
 
-      <!-- ══ STATS TAB ══ -->
-      <div class="tab-panel" id="tab-stats">
-        <div class="section-label">Auto Stats</div>
-        <div class="row">
-          <div class="row-label">Auto Assign Stats</div>
-          <label class="toggle-wrap">
-            <input type="checkbox" checked onchange="onToggle(this,'autoStats')"/>
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <div class="row">
-          <div class="row-label">Stat Priority</div>
-          <div class="dropdown" id="dd-stat">
-            <div class="dropdown-btn" onclick="toggleDropdown('dd-stat')">
-              <span class="dd-val">Strength</span>
-              <span class="dropdown-arrow">▾</span>
-            </div>
-            <div class="dropdown-menu">
-              <div class="dropdown-item selected" onclick="selectDD('dd-stat','Strength',this)">Strength</div>
-              <div class="dropdown-item" onclick="selectDD('dd-stat','Defense',this)">Defense</div>
-              <div class="dropdown-item" onclick="selectDD('dd-stat','Speed',this)">Speed</div>
-              <div class="dropdown-item" onclick="selectDD('dd-stat','Spirit',this)">Spirit</div>
-            </div>
-          </div>
-        </div>
-      </div>
+    -- Sidebar header (drag handle)
+    local sHdrH = isLandscape and 44 or (mobile and 30 or 76)
+    local sHdrTS = isLandscape and 13 or (mobile and 11 or 28)
+    local sHdr=make("Frame",{
+        Size=UDim2.new(1,0,0,sHdrH),BackgroundColor3=C.HDR,
+        BackgroundTransparency=T.HDR,BorderSizePixel=0,ZIndex=5,
+    },side)
+    make("TextLabel",{
+        Size=UDim2.new(1,-10,1,-8),Position=UDim2.new(0,8,0,4),
+        BackgroundTransparency=1,Text=winTitle,TextColor3=C.TXT_A,
+        TextSize=sHdrTS,Font=F.TITLE,
+        TextXAlignment=Enum.TextXAlignment.Left,
+        TextYAlignment=Enum.TextYAlignment.Center,
+        TextWrapped=true,
+        ZIndex=6,
+    },sHdr)
+    make("Frame",{
+        Size=UDim2.new(1,-20,0,1),Position=UDim2.new(0,10,1,-1),
+        BackgroundColor3=C.BORDER,BackgroundTransparency=0.5,BorderSizePixel=0,ZIndex=6,
+    },sHdr)
 
-      <!-- ══ TELEPORT TAB ══ -->
-      <div class="tab-panel" id="tab-teleport">
-        <div class="section-label">Teleport</div>
-        <div class="row">
-          <div class="row-label">Auto Teleport to Mob</div>
-          <label class="toggle-wrap">
-            <input type="checkbox" onchange="onToggle(this,'autoTP')"/>
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <div class="row">
-          <div class="row-label">Teleport Location</div>
-          <div class="dropdown" id="dd-tp">
-            <div class="dropdown-btn" onclick="toggleDropdown('dd-tp')">
-              <span class="dd-val">Soul Society</span>
-              <span class="dropdown-arrow">▾</span>
-            </div>
-            <div class="dropdown-menu">
-              <div class="dropdown-item selected" onclick="selectDD('dd-tp','Soul Society',this)">Soul Society</div>
-              <div class="dropdown-item" onclick="selectDD('dd-tp','Hueco Mundo',this)">Hueco Mundo</div>
-              <div class="dropdown-item" onclick="selectDD('dd-tp','Karakura Town',this)">Karakura Town</div>
-            </div>
-          </div>
-        </div>
-        <div class="row">
-          <div class="row-label">Teleport to Player</div>
-          <button class="action-btn" onclick="showNotif('Teleport','Teleporting to nearest player...')">TP Now</button>
-        </div>
-      </div>
+    -- Tab scroll
+    local sScrollTop = mobile and (sHdrH+1) or 77
+    local sScrollBot = isLandscape and (sHdrH+32) or (mobile and (sHdrH+30) or 113)
+    local sScroll=make("ScrollingFrame",{
+        Size=UDim2.new(1,0,1,-sScrollBot),Position=UDim2.new(0,0,0,sScrollTop),
+        BackgroundTransparency=1,BorderSizePixel=0,
+        ScrollBarThickness=mobile and 4 or 2,ScrollBarImageColor3=C.ACCENT,
+        CanvasSize=UDim2.new(0,0,0,0),AutomaticCanvasSize=Enum.AutomaticSize.Y,
+        ElasticBehavior=Enum.ElasticBehavior.Always,
+        ZIndex=4,
+    },side); pad(sScroll,8,8,0,0); listL(sScroll,2)
 
-      <!-- ══ TRADE TAB ══ -->
-      <div class="tab-panel" id="tab-trade">
-        <div class="section-label">Trade</div>
-        <div class="row">
-          <div class="row-label">Auto Accept Trade</div>
-          <label class="toggle-wrap">
-            <input type="checkbox" onchange="onToggle(this,'autoTrade')"/>
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <div class="row">
-          <div class="row-label">Trade Mode</div>
-          <div class="dropdown" id="dd-trade">
-            <div class="dropdown-btn" onclick="toggleDropdown('dd-trade')">
-              <span class="dd-val">Safe</span>
-              <span class="dropdown-arrow">▾</span>
-            </div>
-            <div class="dropdown-menu">
-              <div class="dropdown-item selected" onclick="selectDD('dd-trade','Safe',this)">Safe</div>
-              <div class="dropdown-item" onclick="selectDD('dd-trade','Aggressive',this)">Aggressive</div>
-            </div>
-          </div>
-        </div>
-      </div>
+    -- Sidebar footer
+    local sFoot=make("Frame",{
+        Size=UDim2.new(1,0,0,35),Position=UDim2.new(0,0,1,-35),
+        BackgroundColor3=C.HDR,BackgroundTransparency=T.HDR,BorderSizePixel=0,ZIndex=4,
+    },side)
+    make("Frame",{
+        Size=UDim2.new(1,-20,0,1),Position=UDim2.new(0,10,0,0),
+        BackgroundColor3=C.BORDER,BackgroundTransparency=0.5,BorderSizePixel=0,ZIndex=5,
+    },sFoot)
+    make("TextLabel",{
+        Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,
+        Text="[ "..toggleKey.." ]  Toggle",TextColor3=C.TXT_C,
+        TextSize=10,Font=F.LIGHT,TextXAlignment=Enum.TextXAlignment.Center,ZIndex=5,
+    },sFoot)
 
-      <!-- ══ SETTINGS TAB ══ -->
-      <div class="tab-panel" id="tab-settings">
-        <div class="section-label">UI Settings</div>
-        <div class="row">
-          <div class="row-label">
-            UI Scale
-          </div>
-          <div class="slider-wrap">
-            <input type="range" min="80" max="150" value="100" oninput="this.nextElementSibling.textContent=this.value+'%'"/>
-            <span class="slider-val">100%</span>
-          </div>
-        </div>
-        <div class="row">
-          <div class="row-label">Show Notifications</div>
-          <label class="toggle-wrap">
-            <input type="checkbox" checked onchange="onToggle(this,'notifs')"/>
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <div class="section-label">Keybinds</div>
-        <div class="row">
-          <div class="row-label">Toggle UI Key</div>
-          <span class="badge">K</span>
-        </div>
-        <div class="section-label">Danger Zone</div>
-        <div class="row">
-          <div class="row-label">Reset All Settings</div>
-          <button class="action-btn" onclick="showNotif('Settings','All settings reset to default.')">Reset</button>
-        </div>
-      </div>
+    -- ── Content panel ──────────────────────────────────────────
+    local cPanel=make("Frame",{
+        Name="Content",Size=UDim2.new(1,-SW,1,0),Position=UDim2.new(0,SW,0,0),
+        BackgroundColor3=C.DARK,BackgroundTransparency=T.CONT,
+        BorderSizePixel=0,ClipsDescendants=true,
+    },main); corner(cPanel, mobile and 8 or 12)
+    -- On mobile minimized, cPanel stretches full width since sidebar hides
+    local function updateCPanelWidth()
+        if minimized and mobile then
+            cPanel.Size=UDim2.new(1,0,1,0)
+            cPanel.Position=UDim2.new(0,0,0,0)
+        else
+            cPanel.Size=UDim2.new(1,-SW,1,0)
+            cPanel.Position=UDim2.new(0,SW,0,0)
+        end
+    end
 
-    </div><!-- end content-body -->
-  </div><!-- end content -->
-</div><!-- end window -->
+    -- Cover content panel's top-left and bottom-left rounded corners
+    -- Placed on main (sibling), matching DARK color
+    make("Frame",{
+        Size=UDim2.new(0,12,0,12),Position=UDim2.new(0,SW,0,0),
+        BackgroundColor3=C.DARK,BackgroundTransparency=T.CONT,
+        BorderSizePixel=0,ZIndex=5,
+    },main)
+    make("Frame",{
+        Size=UDim2.new(0,12,0,12),Position=UDim2.new(0,SW,1,-12),
+        BackgroundColor3=C.DARK,BackgroundTransparency=T.CONT,
+        BorderSizePixel=0,ZIndex=5,
+    },main)
 
-<!-- NOTIFICATIONS -->
-<div class="notif-area" id="notifArea"></div>
+    -- Content header
+    local cHdrH = isLandscape and 36 or (mobile and 28 or 48)
+    local cHdr=make("Frame",{
+        Size=UDim2.new(1,0,0,cHdrH),BackgroundColor3=C.HDR,
+        BackgroundTransparency=T.HDR,BorderSizePixel=0,ZIndex=3,
+    },cPanel)
+    local tabTitleLbl=make("TextLabel",{
+        Size=UDim2.new(1,-90,1,0),Position=UDim2.new(0,14,0,0),
+        BackgroundTransparency=1,Text="",TextColor3=C.TXT_A,
+        TextSize=mobile and 13 or 15,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=4,
+    },cHdr)
+    -- Minimized title — shows "DevN.GG" when collapsed, hidden when expanded
 
-<script>
-  /* ══ TAB SWITCHING ══ */
-  const tabTitles = {
-    main:'Main', autofarm:'Auto Farm', boss:'Boss',
-    dungeon:'Dungeon', stats:'Stats', teleport:'Teleport',
-    trade:'Trade', settings:'Settings'
-  };
-  function switchTab(id, btn) {
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById('tab-' + id).classList.add('active');
-    btn.classList.add('active');
-    document.getElementById('contentTitle').textContent = tabTitles[id] || id;
-    closeAllDropdowns();
-  }
+    make("Frame",{
+        Size=UDim2.new(1,0,0,1),Position=UDim2.new(0,0,1,0),
+        BackgroundColor3=C.BORDER,BackgroundTransparency=0.5,BorderSizePixel=0,ZIndex=4,
+    },cHdr)
 
-  /* ══ DROPDOWN ══ */
-  function toggleDropdown(id) {
-    const dd = document.getElementById(id);
-    const btn = dd.querySelector('.dropdown-btn');
-    const menu = dd.querySelector('.dropdown-menu');
-    const isOpen = menu.classList.contains('open');
-    closeAllDropdowns();
-    if (!isOpen) {
-      btn.classList.add('open');
-      menu.classList.add('open');
-    }
-  }
-  function selectDD(ddId, value, el) {
-    const dd = document.getElementById(ddId);
-    dd.querySelector('.dd-val').textContent = value;
-    dd.querySelectorAll('.dropdown-item').forEach(i => i.classList.remove('selected'));
-    el.classList.add('selected');
-    closeAllDropdowns();
-    showNotif('Setting', ddId.replace('dd-','').replace('-',' ') + ' → ' + value);
-  }
-  function closeAllDropdowns() {
-    document.querySelectorAll('.dropdown-btn.open').forEach(b => b.classList.remove('open'));
-    document.querySelectorAll('.dropdown-menu.open').forEach(m => m.classList.remove('open'));
-  }
-  document.addEventListener('click', e => {
-    if (!e.target.closest('.dropdown')) closeAllDropdowns();
-  });
+    -- Window controls (close / minimise) — bigger on mobile for touch
+    local btnSz  = mobile and 22 or 26
+    local btnTS  = mobile and 12 or 14
+    local btnGap = mobile and 4 or 6
+    local function mkBtn(idx,sym,hcol)
+        -- idx 1=close, 2=min — position from right edge
+        local offX = -(btnSz + (idx-1)*(btnSz+btnGap) + btnGap)
+        local b=make("TextButton",{
+            Size=UDim2.new(0,btnSz,0,btnSz),
+            Position=UDim2.new(1,offX,0.5,-btnSz/2),
+            BackgroundColor3=C.NAVY,BackgroundTransparency=T.CTRL,
+            Text=sym,TextColor3=C.TXT_C,TextSize=btnTS,Font=F.HEAD,
+            BorderSizePixel=0,AutoButtonColor=false,ZIndex=10,
+        },cHdr); corner(b,5); stroke(b,C.BORDER,1,0.5)
+        b.MouseEnter:Connect(function()
+            tw(b,FAST,{TextColor3=hcol,BackgroundColor3=C.HOV,BackgroundTransparency=0.2})
+        end)
+        b.MouseLeave:Connect(function()
+            tw(b,FAST,{TextColor3=C.TXT_C,BackgroundColor3=C.NAVY,BackgroundTransparency=T.CTRL})
+        end)
+        return b
+    end
+    local minimized=false
+    local closeBtn=mkBtn(1,"×",C.RED)
+    local minBtn  =mkBtn(2,"−",C.AMBER)
+    local function doClose() DevNgg:SetVisibility(false) end
+    local _closeDebounce = false
+    local function doCloseSafe()
+        if _closeDebounce then return end
+        _closeDebounce = true
+        doClose()
+        task.delay(0.35, function() _closeDebounce = false end)
+    end
+    closeBtn.MouseButton1Click:Connect(doCloseSafe)
+    closeBtn.TouchTap:Connect(doCloseSafe)
 
-  /* ══ TOGGLE ══ */
-  function onToggle(el, flag) {
-    const state = el.checked ? 'ON' : 'OFF';
-    showNotif(flag, flag + ' turned ' + state);
-  }
+    local cClip=make("Frame",{
+        Size=UDim2.new(1,0,1,-(cHdrH+1)),Position=UDim2.new(0,0,0,cHdrH+1),
+        BackgroundTransparency=1,ClipsDescendants=true,ZIndex=2,
+    },cPanel)
 
-  /* ══ NOTIFICATIONS ══ */
-  let notifCount = 0;
-  function showNotif(title, body) {
-    if (notifCount >= 4) return;
-    notifCount++;
-    const area = document.getElementById('notifArea');
-    const n = document.createElement('div');
-    n.className = 'notif';
-    n.innerHTML = `
-      <div class="notif-bar"></div>
-      <div class="notif-title">${title}</div>
-      <div class="notif-body">${body}</div>
-      <div class="notif-progress"></div>
-    `;
-    area.appendChild(n);
-    setTimeout(() => {
-      n.style.transition = 'opacity .25s, transform .25s';
-      n.style.opacity = '0';
-      n.style.transform = 'translateX(20px)';
-      setTimeout(() => { n.remove(); notifCount--; }, 280);
-    }, 3000);
-  }
+    -- ── Drag (mouse + touch) ──────────────────────────────────
+    -- ── Drag (Rayfield-style) ─────────────────────────────────
+    -- Uses GetMouseLocation() which tracks BOTH mouse and touch finger.
+    -- RenderStepped moves the window — never intercepts game joystick/camera.
+    local dragging = false
+    local relative = Vector2.zero
+    local guiInsetOffset = Vector2.zero
+    pcall(function()
+        local gs = game:GetService("GuiService")
+        if sg.IgnoreGuiInset then guiInsetOffset = gs:GetGuiInset() end
+    end)
 
-  /* ══ DRAG ══ */
-  let dragging = false, ox = 0, oy = 0;
-  const win = document.getElementById('window');
-  win.style.position = 'absolute';
-  win.style.left = '50%'; win.style.top = '50%';
-  win.style.transform = 'translate(-50%,-50%)';
+    local function startDragFromInput(input, processed)
+        if processed then return end
+        local t = input.UserInputType
+        if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
+            dragging = true
+            relative = main.AbsolutePosition + main.AbsoluteSize * main.AnchorPoint
+                       - UserInputService:GetMouseLocation()
+        end
+    end
+    -- sHdr = sidebar drag handle (visible when expanded)
+    sHdr.InputBegan:Connect(startDragFromInput)
+    -- cHdr = content header drag handle (visible when minimized as pill)
+    cHdr.InputBegan:Connect(startDragFromInput)
 
-  function startDrag(e) {
-    dragging = true;
-    const r = win.getBoundingClientRect();
-    ox = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
-    oy = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
-    win.style.transform = 'none';
-    win.style.left = r.left + 'px';
-    win.style.top  = r.top  + 'px';
-    e.preventDefault();
-  }
-  document.getElementById('dragHandle').addEventListener('mousedown', startDrag);
-  document.getElementById('dragHandle2').addEventListener('mousedown', startDrag);
-  document.getElementById('dragHandle').addEventListener('touchstart', startDrag, {passive:false});
-  document.getElementById('dragHandle2').addEventListener('touchstart', startDrag, {passive:false});
+    UserInputService.InputEnded:Connect(function(input)
+        if not dragging then return end
+        local t = input.UserInputType
+        if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
 
-  document.addEventListener('mousemove', e => {
-    if (!dragging) return;
-    win.style.left = (e.clientX - ox) + 'px';
-    win.style.top  = (e.clientY - oy) + 'px';
-  });
-  document.addEventListener('mouseup', () => dragging = false);
-  document.addEventListener('touchmove', e => {
-    if (!dragging) return;
-    win.style.left = (e.touches[0].clientX - ox) + 'px';
-    win.style.top  = (e.touches[0].clientY - oy) + 'px';
-  });
-  document.addEventListener('touchend', () => dragging = false);
+    RunService.RenderStepped:Connect(function()
+        if dragging then
+            local pos = UserInputService:GetMouseLocation() + relative + guiInsetOffset
+            main.Position = UDim2.fromOffset(pos.X, pos.Y)
+        end
+    end)
 
-  /* welcome notif */
-  setTimeout(() => showNotif('DevN.gg', 'Script loaded. Press K to toggle.'), 400);
-</script>
-</body>
-</html>
+    -- Toggle keybind
+    UserInputService.InputBegan:Connect(function(i,gpe)
+        if gpe then return end
+        pcall(function()
+            local key=typeof(toggleKey)=="string" and Enum.KeyCode[toggleKey] or toggleKey
+            if i.KeyCode==key then DevNgg:SetVisibility(not guiVisible) end
+        end)
+    end)
+
+    -- ── Loading animation then show main ───────────────────────
+    -- Run synchronously so nothing can silently error and skip showing the GUI
+    task.spawn(function()
+        local steps={
+            {p=0.3,m="Loading components..."},
+            {p=0.6,m="Applying theme..."},
+            {p=0.85,m="Connecting..."},
+            {p=1.0,m="Ready!"},
+        }
+        for _,s in ipairs(steps) do
+            pcall(function()
+                tw(pBar,TweenInfo.new(0.28,Enum.EasingStyle.Quint),{Size=UDim2.new(s.p,0,1,0)})
+                lStat.Text=s.m
+            end)
+            task.wait(0.30)
+        end
+        task.wait(0.15)
+
+        -- *** Show main window FIRST, then fade out loader ***
+        main.Visible=true
+        setBlur(true)
+
+        -- Fade out loader
+        pcall(function()
+            for _,d in ipairs(lf:GetDescendants()) do
+                if d:IsA("TextLabel") then tw(d,MED,{TextTransparency=1})
+                elseif d:IsA("Frame") then tw(d,MED,{BackgroundTransparency=1}) end
+            end
+            tw(lf,MED,{BackgroundTransparency=1})
+        end)
+        task.wait(0.25)
+        pcall(function() lf:Destroy() end)
+    end)
+
+    -- ══════════════════════════════════════════════════════════
+    -- TAB SYSTEM
+    -- ══════════════════════════════════════════════════════════
+    local tabs={};local activeTab=nil;local tabCount=0
+
+    local function updateH()
+        if not activeTab or minimized then return end
+        if mobile and not isLandscape then return end -- portrait: fixed size
+        local maxH = mobile and (WH) or 580
+        local h=math.clamp(activeTab.ll.AbsoluteContentSize.Y+49+24, mobile and WH or WH, maxH)
+        tw(main,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{Size=UDim2.new(0,WW,0,h)})
+    end
+
+    local function switchTab(tab)
+        closeAllDropdowns()
+        for _,t in ipairs(tabs) do
+            t.content.Visible=false
+            tw(t.btn,FAST,{
+                BackgroundColor3=C.NAVY,BackgroundTransparency=1,TextColor3=C.TAB_OFF,
+            })
+            if t.acc then tw(t.acc,FAST,{BackgroundTransparency=1}) end
+        end
+        tab.content.Visible=true; activeTab=tab
+        tabTitleLbl.Text=tab.name
+        if minimized then
+            tabTitleLbl.Text = winTitle
+            tabTitleLbl.Size = UDim2.new(1,-90,1,0)
+            tabTitleLbl.Position = UDim2.new(0,14,0,0)
+            tabTitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+            tabTitleLbl.TextYAlignment = Enum.TextYAlignment.Center
+            tabTitleLbl.Font = F.TITLE
+            tabTitleLbl.TextSize = 18
+        else
+            tabTitleLbl.Text = activeTab and activeTab.name or ""
+            tabTitleLbl.Size = UDim2.new(1,-90,1,0)
+            tabTitleLbl.Position = UDim2.new(0,14,0,0)
+            tabTitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+            tabTitleLbl.TextYAlignment = Enum.TextYAlignment.Center
+            tabTitleLbl.Font = F.HEAD
+            tabTitleLbl.TextSize = mobile and 13 or 15
+        end
+        tw(tab.btn,FAST,{
+            BackgroundColor3=C.TAB_ON_BG,BackgroundTransparency=0,TextColor3=C.TAB_ON_FG,
+        })
+        if tab.acc then tw(tab.acc,FAST,{BackgroundTransparency=0}) end
+        updateH()
+    end
+
+    local function doMinimize()
+        minimized = not minimized
+        closeAllDropdowns()
+        cClip.Visible      = not minimized
+        sScroll.Visible    = not minimized
+        sFoot.Visible      = not minimized
+        side.Visible       = not minimized
+        if minimized then
+            local pillW = isLandscape and math.min(WW, 300) or (mobile and 220 or WW)
+            local pillH = mobile and 44 or 48
+            -- pill: cPanel full width so title+buttons show
+            cPanel.Size     = UDim2.new(1,0,1,0)
+            cPanel.Position = UDim2.new(0,0,0,0)
+            tw(main,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{Size=UDim2.new(0,pillW,0,pillH)})
+        else
+            updateCPanelWidth()
+            tw(main,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{Size=UDim2.new(0,WW,0,WH)})
+        end
+        minBtn.Text = minimized and "+" or "−"
+    end
+    local _minDebounce = false
+    local function doMinimizeSafe()
+        if _minDebounce then return end
+        _minDebounce = true
+        doMinimize()
+        task.delay(0.35, function() _minDebounce = false end)
+    end
+    minBtn.MouseButton1Click:Connect(doMinimizeSafe)
+    minBtn.TouchTap:Connect(doMinimizeSafe)
+
+    -- ══════════════════════════════════════════════════════════
+    -- WINDOW OBJECT
+    -- ══════════════════════════════════════════════════════════
+    local Window={}
+
+    function Window:CreateTab(name,_icon)
+        tabCount+=1; local idx=tabCount
+
+        -- Sidebar button
+        local sBtnH = isLandscape and 34 or (mobile and 28 or 36)
+        local sBtnTS = isLandscape and 10 or (mobile and 9 or 12)
+        local sBtn=make("TextButton",{
+            Name=name,Size=UDim2.new(1,-10,0,sBtnH),Position=UDim2.new(0,5,0,0),
+            BackgroundColor3=C.TAB_ON_BG,BackgroundTransparency=1,
+            BorderSizePixel=0,Text=" "..name,
+            TextColor3=C.TAB_OFF,TextSize=sBtnTS,Font=F.HEAD,
+            AutoButtonColor=false,TextXAlignment=Enum.TextXAlignment.Left,
+            TextWrapped=true,
+            LayoutOrder=idx,ZIndex=5,
+        },sScroll); corner(sBtn,7)
+
+        local sAcc=make("Frame",{
+            Size=UDim2.new(0,3,0,18),Position=UDim2.new(0,0,0.5,-9),
+            BackgroundColor3=C.ACCENT,BackgroundTransparency=1,BorderSizePixel=0,ZIndex=6,
+        },sBtn); corner(sAcc,2)
+
+        sBtn.MouseEnter:Connect(function()
+            if activeTab and activeTab.btn==sBtn then return end
+            tw(sBtn,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.3,TextColor3=C.TXT_B})
+        end)
+        sBtn.MouseLeave:Connect(function()
+            if activeTab and activeTab.btn==sBtn then return end
+            tw(sBtn,FAST,{BackgroundColor3=C.NAVY,BackgroundTransparency=1,TextColor3=C.TAB_OFF})
+        end)
+
+        -- Content scroll
+        local tSF=make("ScrollingFrame",{
+            Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,BorderSizePixel=0,
+            ScrollBarThickness=mobile and 5 or 3,ScrollBarImageColor3=C.ACCENT,
+            CanvasSize=UDim2.new(0,0,0,0),AutomaticCanvasSize=Enum.AutomaticSize.Y,
+            ElasticBehavior=Enum.ElasticBehavior.Always,
+            Visible=false,ZIndex=2,
+        },cClip)
+        local tLL=make("UIListLayout",{
+            SortOrder=Enum.SortOrder.LayoutOrder,
+            HorizontalAlignment=Enum.HorizontalAlignment.Center,
+            Padding=UDim.new(0,mobile and 3 or 5),
+        },tSF); pad(tSF, mobile and 8 or 12, mobile and 12 or 18, mobile and 8 or 12, mobile and 8 or 12)
+
+        local tabData={name=name,btn=sBtn,acc=sAcc,content=tSF,ll=tLL}
+        table.insert(tabs,tabData)
+        sBtn.MouseButton1Click:Connect(function() switchTab(tabData) end)
+        -- Close dropdowns when tab content scrolls (prevents floating dropdown following issue)
+        tSF:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+            closeAllDropdowns()
+        end)
+        tLL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+            if activeTab==tabData then updateH() end
+        end)
+        if tabCount==1 then task.defer(function() switchTab(tabData) end) end
+
+        local content=tSF
+        local Tab={}
+
+        -- ────────────────────────────────────────────────────
+        -- ELEMENTS
+        -- ────────────────────────────────────────────────────
+
+        function Tab:CreateSection(sName)
+            local row=make("Frame",{Size=UDim2.new(1,0,0,24),BackgroundTransparency=1},content)
+            make("Frame",{
+                Size=UDim2.new(1,0,0,1),Position=UDim2.new(0,0,0.5,0),
+                BackgroundColor3=C.BORDER,BackgroundTransparency=0.5,BorderSizePixel=0,
+            },row)
+            local pill=make("Frame",{
+                BackgroundColor3=C.NAVY,BackgroundTransparency=T.SIDE,
+                BorderSizePixel=0,AutomaticSize=Enum.AutomaticSize.X,Size=UDim2.new(0,0,1,0),
+            },row); corner(pill,5)
+            make("TextLabel",{
+                BackgroundTransparency=1,AutomaticSize=Enum.AutomaticSize.X,
+                Size=UDim2.new(0,0,1,0),Text="  "..sName:upper().."  ",
+                TextColor3=C.ACCENT,TextSize=9,Font=F.HEAD,
+                TextXAlignment=Enum.TextXAlignment.Left,
+            },pill)
+            local S={}
+            function S:Set(n) pill:FindFirstChildOfClass("TextLabel").Text="  "..n:upper().."  " end
+            return S
+        end
+
+        function Tab:CreateDivider()
+            local d=make("Frame",{
+                Size=UDim2.new(1,0,0,1),BackgroundColor3=C.BORDER,
+                BackgroundTransparency=0.5,BorderSizePixel=0,
+            },content)
+            local D={}; function D:Set(v) d.Visible=v end; return D
+        end
+
+        function Tab:CreateLabel(cfg)
+            local f=make("Frame",{
+                Size=UDim2.new(1,0,0,mobile and 30 or 38),BackgroundColor3=C.DARK,
+                BackgroundTransparency=T.SURF,BorderSizePixel=0,
+            },content); corner(f,8); stroke(f,C.BORDER,1,0.5)
+            local lbl=make("TextLabel",{
+                Size=UDim2.new(1,-20,1,0),Position=UDim2.new(0,10,0,0),
+                BackgroundTransparency=1,Text=cfg.Text or "",TextColor3=C.TXT_B,
+                TextSize=mobile and 10 or 12,Font=F.BODY,TextXAlignment=Enum.TextXAlignment.Left,TextWrapped=true,
+            },f)
+            local L={}
+            function L:Set(t) lbl.Text=t end
+            function L:SetColor(c) lbl.TextColor3=c end
+            return L
+        end
+
+        function Tab:CreateParagraph(cfg)
+            local f=make("Frame",{
+                Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
+                BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF,BorderSizePixel=0,
+            },content); corner(f,8); stroke(f,C.BORDER,1,0.5)
+            local inner=make("Frame",{Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1},f)
+            pad(inner, mobile and 7 or 10, mobile and 7 or 10, mobile and 9 or 12, mobile and 9 or 12)
+            make("UIListLayout",{SortOrder=Enum.SortOrder.LayoutOrder,Padding=UDim.new(0,3)},inner)
+            local tL=make("TextLabel",{
+                Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
+                BackgroundTransparency=1,Text=cfg.Title or "",TextColor3=C.TXT_A,
+                TextSize=mobile and 11 or 13,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Left,
+                TextWrapped=true,LayoutOrder=1,
+            },inner)
+            local bL=make("TextLabel",{
+                Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
+                BackgroundTransparency=1,Text=cfg.Content or "",TextColor3=C.TXT_B,
+                TextSize=mobile and 10 or 12,Font=F.BODY,TextXAlignment=Enum.TextXAlignment.Left,
+                TextWrapped=true,LayoutOrder=2,
+            },inner)
+            local P={}
+            function P:Set(t,b)      tL.Text=t or tL.Text; bL.Text=b or bL.Text end
+            function P:SetTitle(t)   tL.Text=t end
+            function P:SetContent(b) bL.Text=b end
+            return P
+        end
+
+        function Tab:CreateToggle(cfg)
+            local flag=cfg.Flag; local enabled=cfg.CurrentValue or false
+
+            local togH    = mobile and 36 or 48
+            local togTS   = mobile and 11 or 13
+            local pillW   = mobile and 32 or 40
+            local pillH   = mobile and 17 or 22
+            local knobS   = mobile and 12 or 16
+            local pillR   = mobile and 8 or 11
+            local pillOff = mobile and -(pillW+8) or -52
+            local knobOff = mobile and -(knobS/2) or -8
+
+            local row=make("TextButton",{
+                Size=UDim2.new(1,0,0,togH),BackgroundColor3=C.DARK,
+                BackgroundTransparency=T.SURF,BorderSizePixel=0,Text="",AutoButtonColor=false,
+            },content); corner(row,8)
+            local rs=stroke(row,C.BORDER,1,0.5)
+
+            local stripe=make("Frame",{
+                Size=UDim2.new(0,3,0,26),Position=UDim2.new(0,0,0.5,-13),
+                BackgroundColor3=C.ACCENT,BackgroundTransparency=1,BorderSizePixel=0,
+            },row); corner(stripe,2)
+
+            local lbl=make("TextLabel",{
+                Size=UDim2.new(1,-(pillW+28),1,0),Position=UDim2.new(0,14,0,0),
+                BackgroundTransparency=1,Text=cfg.Name or "Toggle",
+                TextColor3=C.TXT_B,TextSize=togTS,Font=F.BODY,
+                TextXAlignment=Enum.TextXAlignment.Left,TextWrapped=true,
+            },row)
+
+            local pill=make("Frame",{
+                Size=UDim2.new(0,pillW,0,pillH),Position=UDim2.new(1,pillOff,0.5,-(pillH/2)),
+                BackgroundColor3=C.TOG_OFF_BG,BorderSizePixel=0,
+            },row); corner(pill,pillR); stroke(pill,C.BORDER,1,0.4)
+
+            local knob=make("Frame",{
+                Size=UDim2.new(0,knobS,0,knobS),Position=UDim2.new(0,3,0.5,knobOff),
+                BackgroundColor3=C.TOG_KNOB_OFF,BorderSizePixel=0,
+            },pill); corner(knob,math.floor(knobS/2))
+
+            local function setState(val,silent)
+                enabled=val
+                if flag then flags[flag]=val; if not silent then saveConfig() end end
+                local knobOnX  = pillW - knobS - 3
+                if val then
+                    tw(pill,FAST,{BackgroundColor3=C.TOG_ON_BG})
+                    tw(knob,FAST,{Position=UDim2.new(0,knobOnX,0.5,knobOff),BackgroundColor3=C.TOG_ON})
+                    tw(lbl,FAST,{TextColor3=C.TXT_A})
+                    tw(stripe,FAST,{BackgroundTransparency=0})
+                    tw(rs,FAST,{Color=C.ACCENT,Transparency=0.2})
+                    tw(row,FAST,{BackgroundColor3=C.NAVY,BackgroundTransparency=T.SURF-0.08})
+                else
+                    tw(pill,FAST,{BackgroundColor3=C.TOG_OFF_BG})
+                    tw(knob,FAST,{Position=UDim2.new(0,3,0.5,knobOff),BackgroundColor3=C.TOG_KNOB_OFF})
+                    tw(lbl,FAST,{TextColor3=C.TXT_B})
+                    tw(stripe,FAST,{BackgroundTransparency=1})
+                    tw(rs,FAST,{Color=C.BORDER,Transparency=0.5})
+                    tw(row,FAST,{BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF})
+                end
+                if not silent and cfg.Callback then cfg.Callback(val) end
+            end
+
+            if enabled then setState(true,true) end
+            if flag then toggleSetters[flag]=setState end
+            row.MouseButton1Click:Connect(function() setState(not enabled) end)
+            row.MouseEnter:Connect(function()
+                if not enabled then tw(row,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.25}) end
+            end)
+            row.MouseLeave:Connect(function()
+                if not enabled then tw(row,FAST,{BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF}) end
+            end)
+        end
+
+        function Tab:CreateButton(cfg)
+            local btnH  = mobile and 34 or 44
+            local btnTS = mobile and 11 or 13
+            local btn=make("TextButton",{
+                Size=UDim2.new(1,0,0,btnH),BackgroundColor3=C.DARK,
+                BackgroundTransparency=T.SURF,BorderSizePixel=0,
+                Text=cfg.Name or "Button",TextColor3=C.TXT_B,
+                TextSize=btnTS,Font=F.HEAD,AutoButtonColor=false,
+            },content); corner(btn,8)
+            local bs=stroke(btn,C.BORDER,1,0.5)
+            btn.MouseButton1Click:Connect(function()
+                tw(btn,FAST,{BackgroundColor3=C.ACT,BackgroundTransparency=0.1,TextColor3=C.TXT_A})
+                tw(bs,FAST,{Color=C.BORDER_FOC,Transparency=0})
+                task.delay(0.14,function()
+                    tw(btn,MED,{BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF,TextColor3=C.TXT_B})
+                    tw(bs,MED,{Color=C.BORDER,Transparency=0.5})
+                end)
+                if cfg.Callback then pcall(cfg.Callback) end
+            end)
+            btn.MouseEnter:Connect(function()
+                tw(btn,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.2,TextColor3=C.TXT_A})
+                tw(bs,FAST,{Color=C.BORDER_FOC,Transparency=0})
+            end)
+            btn.MouseLeave:Connect(function()
+                tw(btn,FAST,{BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF,TextColor3=C.TXT_B})
+                tw(bs,MED,{Color=C.BORDER,Transparency=0.5})
+            end)
+        end
+
+        function Tab:CreateTextInput(cfg)
+            local inpBoxH = mobile and 30 or 40
+            local inpLblH = mobile and 12 or 16
+            local inpTS   = mobile and 10 or 13
+            local inpLTS  = mobile and 10 or 11
+            local inpTotalH = inpBoxH + inpLblH + 4
+            local w=make("Frame",{Size=UDim2.new(1,0,0,inpTotalH),BackgroundTransparency=1,BorderSizePixel=0},content)
+            make("TextLabel",{
+                Size=UDim2.new(1,0,0,inpLblH),Position=UDim2.new(0,2,0,0),
+                BackgroundTransparency=1,Text=cfg.Name or "Input",TextColor3=C.TXT_B,
+                TextSize=inpLTS,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Left,
+            },w)
+            local box=make("TextBox",{
+                Size=UDim2.new(1,0,0,inpBoxH),Position=UDim2.new(0,0,0,inpLblH+2),
+                BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF,BorderSizePixel=0,
+                Text=cfg.Default or "",PlaceholderText=cfg.Placeholder or "Type here...",
+                TextColor3=C.TXT_A,PlaceholderColor3=C.TXT_C,
+                TextSize=inpTS,Font=F.BODY,ClearTextOnFocus=false,
+            },w); corner(box,8)
+            local bs=stroke(box,C.BORDER,1,0.5); pad(box,0,0,12,12)
+            box.Focused:Connect(function()   tw(bs,FAST,{Color=C.BORDER_FOC,Transparency=0}) end)
+            box.FocusLost:Connect(function()
+                tw(bs,FAST,{Color=C.BORDER,Transparency=0.5})
+                if cfg.Callback then cfg.Callback(box.Text) end
+            end)
+            local I={}
+            function I:GetValue() return box.Text end
+            function I:SetValue(v) box.Text=v end
+            function I:Clear()    box.Text="" end
+            return I
+        end
+
+        function Tab:CreateSlider(cfg)
+            local flag=cfg.Flag; local mn=cfg.Min or 0; local mx=cfg.Max or 100
+            local inc=cfg.Increment or 1; local sfx=cfg.Suffix or ""
+            local val=math.clamp(cfg.Default or mn,mn,mx)
+            local drag=false; local dc=nil
+
+            local slH = mobile and 48 or 60
+            local w=make("Frame",{
+                Size=UDim2.new(1,0,0,slH),BackgroundColor3=C.DARK,
+                BackgroundTransparency=T.SURF,BorderSizePixel=0,
+            },content); corner(w,8); local ws=stroke(w,C.BORDER,1,0.5)
+
+            make("TextLabel",{
+                Size=UDim2.new(1,-82,0,mobile and 16 or 20),Position=UDim2.new(0,10,0,mobile and 6 or 8),
+                BackgroundTransparency=1,Text=cfg.Name or "Slider",TextColor3=C.TXT_B,
+                TextSize=mobile and 11 or 13,Font=F.BODY,TextXAlignment=Enum.TextXAlignment.Left,
+            },w)
+            local vL=make("TextLabel",{
+                Size=UDim2.new(0,70,0,mobile and 16 or 20),Position=UDim2.new(1,-78,0,mobile and 6 or 8),
+                BackgroundTransparency=1,TextColor3=C.ACCENT,
+                TextSize=mobile and 11 or 13,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Right,
+            },w)
+
+            local tr=make("Frame",{
+                Size=UDim2.new(1,-20,0,4),Position=UDim2.new(0,10,0,mobile and 34 or 42),
+                BackgroundColor3=C.BORDER,BackgroundTransparency=0.3,BorderSizePixel=0,
+            },w); corner(tr,2)
+            local fi=make("Frame",{Size=UDim2.new(0,0,1,0),BackgroundColor3=C.ACCENT,BorderSizePixel=0},tr)
+            corner(fi,2)
+            local kn=make("Frame",{
+                Size=UDim2.new(0,12,0,12),AnchorPoint=Vector2.new(0.5,0.5),
+                Position=UDim2.new(0,0,0.5,0),BackgroundColor3=C.TXT_A,BorderSizePixel=0,
+            },tr); corner(kn,6)
+
+            local int=make("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",ZIndex=5},w)
+
+            local function setV(v,silent)
+                local q=math.floor(v/inc+0.5)*inc
+                local c2=math.clamp(math.floor(q*1e7+0.5)/1e7,mn,mx)
+                if c2==val then return end; val=c2
+                local r=(val-mn)/(mx-mn)
+                tw(fi,FAST,{Size=UDim2.new(r,0,1,0)}); tw(kn,FAST,{Position=UDim2.new(r,0,0.5,0)})
+                vL.Text=tostring(val)..sfx
+                if flag then flags[flag]=val; if not silent then saveConfig() end end
+                if not silent and cfg.Callback then cfg.Callback(val) end
+            end
+
+            int.MouseButton1Down:Connect(function()
+                drag=true; tw(ws,FAST,{Color=C.BORDER_FOC,Transparency=0})
+                if dc then dc:Disconnect() end
+                dc=RunService.Heartbeat:Connect(function()
+                    if drag then
+                        local mX=UserInputService:GetMouseLocation().X
+                        local tX=tr.AbsolutePosition.X; local tW=tr.AbsoluteSize.X
+                        if tW>0 then setV(mn+math.clamp((mX-tX)/tW,0,1)*(mx-mn)) end
+                    else dc:Disconnect();dc=nil;tw(ws,FAST,{Color=C.BORDER,Transparency=0.5});saveConfig() end
+                end)
+            end)
+            UserInputService.InputEnded:Connect(function(i)
+                if i.UserInputType==Enum.UserInputType.MouseButton1 then drag=false end
+            end)
+            int.MouseEnter:Connect(function() tw(w,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.2}) end)
+            int.MouseLeave:Connect(function()
+                if not drag then tw(w,FAST,{BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF}) end
+            end)
+
+            local ir=(val-mn)/(mx-mn)
+            fi.Size=UDim2.new(ir,0,1,0); kn.Position=UDim2.new(ir,0,0.5,0)
+            vL.Text=tostring(val)..sfx; if flag then flags[flag]=val end
+
+            local Sl={}; function Sl:Set(v,s) setV(v,s) end; function Sl:Get() return val end; return Sl
+        end
+
+        function Tab:CreateKeybind(cfg)
+            local flag=cfg.Flag; local ck=cfg.Default or Enum.KeyCode.Unknown
+            local listening=false; local hc=nil
+            local bl={[Enum.KeyCode.Unknown]=true}
+            if cfg.Blacklist then for _,k in ipairs(cfg.Blacklist) do bl[k]=true end end
+
+            local w=make("Frame",{
+                Size=UDim2.new(1,0,0,mobile and 38 or 48),BackgroundColor3=C.DARK,
+                BackgroundTransparency=T.SURF,BorderSizePixel=0,
+            },content); corner(w,8); local ws=stroke(w,C.BORDER,1,0.5)
+
+            make("TextLabel",{
+                Size=UDim2.new(1,-100,1,0),Position=UDim2.new(0,10,0,0),
+                BackgroundTransparency=1,Text=cfg.Name or "Keybind",TextColor3=C.TXT_B,
+                TextSize=mobile and 11 or 13,Font=F.BODY,TextXAlignment=Enum.TextXAlignment.Left,
+            },w)
+
+            local bdg=make("Frame",{
+                Size=UDim2.new(0,mobile and 74 or 88,0,mobile and 22 or 28),Position=UDim2.new(1,-84,0.5,mobile and -11 or -14),
+                BackgroundColor3=C.NAVY,BackgroundTransparency=0.35,BorderSizePixel=0,
+            },w); corner(bdg,6); local bs=stroke(bdg,C.BORDER,1,0.4)
+
+            local kLbl=make("TextLabel",{
+                Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,TextColor3=C.TXT_B,
+                TextSize=mobile and 10 or 11,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Center,
+            },bdg)
+
+            local int=make("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",ZIndex=5},w)
+
+            local function kname(kc)
+                if kc==Enum.KeyCode.Unknown then return "None" end
+                local s2=tostring(kc); local d2=s2:find("%.[^%.]*$"); return d2 and s2:sub(d2+1) or s2
+            end
+            local function sk(kc,silent)
+                ck=kc; kLbl.Text=kname(kc)
+                if flag then flags[flag]=kname(kc); if not silent then saveConfig() end end
+                if not silent and cfg.Callback then cfg.Callback(kc) end
+            end
+            local function stopL()
+                listening=false; kLbl.Text=kname(ck)
+                tw(bs,FAST,{Color=C.BORDER,Transparency=0.4}); tw(bdg,FAST,{BackgroundColor3=C.NAVY,BackgroundTransparency=0.35})
+                tw(ws,FAST,{Color=C.BORDER,Transparency=0.5}); tw(w,FAST,{BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF})
+            end
+            local function startL()
+                listening=true; kLbl.Text="..."
+                tw(bs,FAST,{Color=C.BORDER_FOC,Transparency=0}); tw(bdg,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.2})
+                tw(ws,FAST,{Color=C.BORDER_FOC,Transparency=0})
+            end
+
+            int.MouseButton1Click:Connect(function() if listening then stopL() else startL() end end)
+            int.MouseEnter:Connect(function() tw(w,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.2}) end)
+            int.MouseLeave:Connect(function()
+                if not listening then tw(w,FAST,{BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF}) end
+            end)
+
+            UserInputService.InputBegan:Connect(function(input,gpe)
+                if input.UserInputType~=Enum.UserInputType.Keyboard then return end
+                if listening then
+                    if not bl[input.KeyCode] then sk(input.KeyCode,false); stopL() end; return
+                end
+                if input.KeyCode~=ck or gpe then return end
+                if cfg.HoldToInteract then
+                    if hc then hc:Disconnect() end
+                    hc=UserInputService.InputEnded:Connect(function(e)
+                        if e.KeyCode==ck then hc:Disconnect();hc=nil;pcall(cfg.Callback,false) end
+                    end); pcall(cfg.Callback,true)
+                else pcall(cfg.Callback,ck) end
+            end)
+
+            sk(ck,true)
+            local KB={}; function KB:Set(kc,s) sk(kc,s) end; function KB:Get() return ck end; return KB
+        end
+
+        function Tab:CreateDropdown(cfg)
+            local options=cfg.Options or {}; local selected=cfg.Default or ""; local isOpen=false
+
+            -- Mobile-aware sizes
+            local ddBtnH   = mobile and 30  or 40
+            local ddLblH   = mobile and 12  or 16
+            local ddLblTS  = mobile and 10  or 11
+            local ddBtnTS  = mobile and 11  or 12
+            local ddItemH  = mobile and 32  or 36
+            local ddItemTS = mobile and 11  or 12
+            local ddMaxH   = mobile and math.min(math.floor(workspace.CurrentCamera.ViewportSize.Y * 0.30), 180) or 200
+            local ddSBT    = mobile and 3   or 2  -- scrollbar thickness
+            local ddTotalH = ddBtnH + ddLblH + 4
+
+            local w=make("Frame",{Size=UDim2.new(1,0,0,ddTotalH),BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=false},content)
+            make("TextLabel",{
+                Size=UDim2.new(1,0,0,ddLblH),Position=UDim2.new(0,2,0,0),
+                BackgroundTransparency=1,Text=cfg.Name or "Dropdown",TextColor3=C.TXT_B,
+                TextSize=ddLblTS,Font=F.HEAD,TextXAlignment=Enum.TextXAlignment.Left,
+            },w)
+            local btn=make("TextButton",{
+                Size=UDim2.new(1,0,0,ddBtnH),Position=UDim2.new(0,0,0,ddLblH+2),
+                BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF,BorderSizePixel=0,
+                Text=selected~="" and selected or "Select...",
+                TextColor3=selected~="" and C.TXT_A or C.TXT_C,
+                TextSize=ddBtnTS,Font=F.BODY,AutoButtonColor=false,TextXAlignment=Enum.TextXAlignment.Left,
+            },w); corner(btn,8); local bs=stroke(btn,C.BORDER,1,0.5); pad(btn,0,0,14,34)
+
+            local arrow=make("TextLabel",{
+                Size=UDim2.new(0,30,1,0),Position=UDim2.new(1,-32,0,0),
+                BackgroundTransparency=1,Text="▾",TextColor3=C.TXT_C,
+                TextSize=mobile and 16 or 12,Font=F.HEAD,
+            },btn)
+
+            -- Dropdown list parented to sg so it floats above everything
+            local dl=make("Frame",{
+                BackgroundColor3=C.DARK,BackgroundTransparency=0.05,
+                BorderSizePixel=0,Visible=false,ZIndex=60,ClipsDescendants=true,
+            },sg); corner(dl,10); stroke(dl,C.BORDER_FOC,1,0.2)
+
+            -- Semi-opaque backdrop for mobile so items are clearly readable
+            if mobile then
+                make("Frame",{
+                    Size=UDim2.new(1,0,1,0),BackgroundColor3=Color3.fromRGB(4,10,28),
+                    BackgroundTransparency=0.08,BorderSizePixel=0,ZIndex=60,
+                },dl)
+            end
+
+            local dsf=make("ScrollingFrame",{
+                Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,BorderSizePixel=0,
+                ScrollBarThickness=ddSBT,ScrollBarImageColor3=C.ACCENT,
+                CanvasSize=UDim2.new(0,0,0,0),AutomaticCanvasSize=Enum.AutomaticSize.Y,
+                ZIndex=61,ScrollingDirection=Enum.ScrollingDirection.Y,
+                ElasticBehavior=Enum.ElasticBehavior.Always,
+            },dl)
+            make("UIListLayout",{SortOrder=Enum.SortOrder.LayoutOrder,Padding=UDim.new(0,2)},dsf)
+            pad(dsf,6,6,0,0)
+
+            local DD={}
+            local function close2()
+                if not isOpen then return end; isOpen=false; dl.Visible=false
+                tw(bs,FAST,{Color=C.BORDER,Transparency=0.5})
+                tw(btn,FAST,{BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF})
+                arrow.Text="▾"; unregisterDropdown(close2)
+            end
+            local function refresh2()
+                for _,ch in ipairs(dsf:GetChildren()) do
+                    if ch:IsA("TextButton") or ch:IsA("TextLabel") then ch:Destroy() end
+                end
+                if #options==0 then
+                    make("TextLabel",{
+                        Size=UDim2.new(1,0,0,ddItemH),BackgroundTransparency=1,
+                        Text="  (empty)",TextColor3=C.TXT_C,TextSize=ddItemTS,Font=F.LIGHT,
+                        TextXAlignment=Enum.TextXAlignment.Left,ZIndex=62,
+                    },dsf)
+                else
+                    for i,opt in ipairs(options) do
+                        local sel=opt==selected
+                        local item=make("TextButton",{
+                            Size=UDim2.new(1,0,0,ddItemH),
+                            BackgroundColor3=sel and C.NAVY or C.DARK,
+                            BackgroundTransparency=sel and 0.2 or 0.35,
+                            BorderSizePixel=0,
+                            Text="   "..opt,TextColor3=sel and C.TXT_A or C.TXT_B,
+                            TextSize=ddItemTS,Font=sel and F.HEAD or F.BODY,
+                            AutoButtonColor=false,TextXAlignment=Enum.TextXAlignment.Left,
+                            LayoutOrder=i,ZIndex=62,
+                        },dsf)
+                        -- Selected indicator bar
+                        if sel then
+                            local bar=make("Frame",{
+                                Size=UDim2.new(0,3,0,mobile and 24 or 18),
+                                Position=UDim2.new(0,0,0.5,mobile and -12 or -9),
+                                BackgroundColor3=C.ACCENT,BorderSizePixel=0,ZIndex=63,
+                            },item); corner(bar,2)
+                        end
+                        -- Divider between items
+                        make("Frame",{
+                            Size=UDim2.new(1,-16,0,1),Position=UDim2.new(0,8,1,-1),
+                            BackgroundColor3=C.BORDER,BackgroundTransparency=0.7,BorderSizePixel=0,ZIndex=63,
+                        },item)
+                        item.MouseEnter:Connect(function()
+                            tw(item,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.1,TextColor3=C.TXT_A})
+                        end)
+                        item.MouseLeave:Connect(function()
+                            tw(item,FAST,{BackgroundColor3=sel and C.NAVY or C.DARK,BackgroundTransparency=sel and 0.2 or 0.35,TextColor3=sel and C.TXT_A or C.TXT_B})
+                        end)
+                        -- Both click and touch
+                        local function onSelect()
+                            selected=opt; btn.Text=opt; btn.TextColor3=C.TXT_A; close2()
+                            if cfg.Callback then cfg.Callback(opt) end
+                        end
+                        item.MouseButton1Click:Connect(onSelect)
+                        item.TouchTap:Connect(onSelect)
+                    end
+                end
+                local listH = math.min(math.max(#options,1)*ddItemH + 12, ddMaxH)
+                dl.Size=UDim2.new(0,btn.AbsoluteSize.X,0,listH)
+            end
+
+            local function openDropdown()
+                if isOpen then close2() return end
+                closeAllDropdowns(); isOpen=true; registerDropdown(close2); refresh2()
+                local ap=btn.AbsolutePosition; local as=btn.AbsoluteSize
+                local listH = math.min(math.max(#options,1)*ddItemH + 12, ddMaxH)
+                -- Smart positioning: open down if space, else open up
+                local screenH = workspace.CurrentCamera.ViewportSize.Y
+                local spaceBelow = screenH - (ap.Y + as.Y + 4)
+                local posY
+                if spaceBelow >= listH or spaceBelow > screenH/2 then
+                    posY = ap.Y + as.Y + 4
+                else
+                    posY = math.max(ap.Y - listH - 4, 4)
+                end
+                dl.Size=UDim2.new(0,as.X,0,listH)
+                dl.Position=UDim2.new(0,ap.X,0,posY)
+                dl.Visible=true
+                tw(bs,FAST,{Color=C.BORDER_FOC,Transparency=0})
+                tw(btn,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.2})
+                arrow.Text="▴"
+            end
+
+            btn.MouseButton1Click:Connect(openDropdown)
+            btn.TouchTap:Connect(openDropdown)
+            btn.MouseEnter:Connect(function() tw(btn,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.2}) end)
+            btn.MouseLeave:Connect(function()
+                if not isOpen then tw(btn,FAST,{BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF}) end
+            end)
+
+            function DD:SetOptions(o)
+                options=o; local ok2=false
+                for _,v in ipairs(options) do if v==selected then ok2=true break end end
+                if not ok2 then selected=""; btn.Text="Select..."; btn.TextColor3=C.TXT_C end
+                if isOpen then refresh2() end
+            end
+            function DD:AddOption(o)
+                for _,v in ipairs(options) do if v==o then return end end
+                table.insert(options,o); if isOpen then refresh2() end
+            end
+            function DD:RemoveOption(o)
+                for i,v in ipairs(options) do
+                    if v==o then
+                        table.remove(options,i)
+                        if selected==o then selected="";btn.Text="Select...";btn.TextColor3=C.TXT_C end
+                        if isOpen then refresh2() end; return
+                    end
+                end
+            end
+            function DD:GetSelected() return selected end
+            function DD:GetOptions()  return options  end
+            function DD:SetSelected(v)
+                selected=v; btn.Text=v~="" and v or "Select..."
+                btn.TextColor3=v~="" and C.TXT_A or C.TXT_C
+            end
+            function DD:Close() close2() end
+            return DD
+        end
+
+        function Tab:CreateColorPicker(cfg)
+            local flag=cfg.Flag; local color=cfg.Default or Color3.fromRGB(168,207,255)
+            local h,s,v=color:ToHSV(); local isOpen=false
+
+            local row=make("TextButton",{
+                Size=UDim2.new(1,0,0,mobile and 38 or 48),BackgroundColor3=C.DARK,
+                BackgroundTransparency=T.SURF,BorderSizePixel=0,Text="",AutoButtonColor=false,
+            },content); corner(row,8); local rs=stroke(row,C.BORDER,1,0.5)
+
+            make("TextLabel",{
+                Size=UDim2.new(1,-72,1,0),Position=UDim2.new(0,10,0,0),
+                BackgroundTransparency=1,Text=cfg.Name or "Color",TextColor3=C.TXT_B,
+                TextSize=mobile and 11 or 13,Font=F.BODY,TextXAlignment=Enum.TextXAlignment.Left,
+            },row)
+            local sw=make("Frame",{
+                Size=UDim2.new(0,mobile and 22 or 28,0,mobile and 13 or 16),Position=UDim2.new(1,-46,0.5,mobile and -6 or -8),
+                BackgroundColor3=color,BorderSizePixel=0,
+            },row); corner(sw,5); stroke(sw,C.BORDER,1,0.4)
+            make("TextLabel",{
+                Size=UDim2.new(0,14,1,0),Position=UDim2.new(1,-18,0,0),
+                BackgroundTransparency=1,Text="▾",TextColor3=C.TXT_C,TextSize=mobile and 10 or 12,Font=F.HEAD,
+            },row)
+
+            local cpH = mobile and 140 or 174
+            local panel=make("Frame",{
+                Size=UDim2.new(1,0,0,cpH),BackgroundColor3=C.DARK,
+                BackgroundTransparency=T.SURF,BorderSizePixel=0,Visible=false,
+            },content); corner(panel,8); stroke(panel,C.BORDER,1,0.5); pad(panel,8,8,8,8)
+
+            local svB=make("Frame",{Size=UDim2.new(1,-28,1,-38),BackgroundColor3=Color3.fromHSV(h,1,1),BorderSizePixel=0},panel)
+            corner(svB,5)
+            make("UIGradient",{
+                Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.new(1,1,1)),ColorSequenceKeypoint.new(1,Color3.new(1,1,1))}),
+                Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(1,1)}),
+            },svB)
+            local bo=make("Frame",{Size=UDim2.new(1,0,1,0),BackgroundColor3=Color3.new(0,0,0),BorderSizePixel=0},svB)
+            corner(bo,5)
+            make("UIGradient",{
+                Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),NumberSequenceKeypoint.new(1,0)}),Rotation=90,
+            },bo)
+            local svK=make("Frame",{
+                Size=UDim2.new(0,12,0,12),AnchorPoint=Vector2.new(0.5,0.5),
+                Position=UDim2.new(s,0,1-v,0),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0,ZIndex=5,
+            },svB); corner(svK,7); stroke(svK,Color3.new(0,0,0),1)
+
+            local hB=make("Frame",{Size=UDim2.new(0,14,1,-38),Position=UDim2.new(1,-14,0,0),BorderSizePixel=0},panel)
+            corner(hB,3); stroke(hB,C.BORDER,1,0.4)
+            make("UIGradient",{
+                Color=ColorSequence.new({
+                    ColorSequenceKeypoint.new(0,   Color3.fromHSV(0,1,1)),
+                    ColorSequenceKeypoint.new(0.17,Color3.fromHSV(0.17,1,1)),
+                    ColorSequenceKeypoint.new(0.33,Color3.fromHSV(0.33,1,1)),
+                    ColorSequenceKeypoint.new(0.5, Color3.fromHSV(0.5,1,1)),
+                    ColorSequenceKeypoint.new(0.67,Color3.fromHSV(0.67,1,1)),
+                    ColorSequenceKeypoint.new(0.83,Color3.fromHSV(0.83,1,1)),
+                    ColorSequenceKeypoint.new(1,   Color3.fromHSV(1,1,1)),
+                }),Rotation=90,
+            },hB)
+            local hK=make("Frame",{
+                Size=UDim2.new(1,4,0,4),AnchorPoint=Vector2.new(0.5,0.5),
+                Position=UDim2.new(0.5,0,h,0),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0,ZIndex=5,
+            },hB); corner(hK,2); stroke(hK,Color3.new(0,0,0),1)
+
+            local hx=make("TextBox",{
+                Size=UDim2.new(1,0,0,26),Position=UDim2.new(0,0,1,-26),
+                BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF,BorderSizePixel=0,
+                TextColor3=C.TXT_A,PlaceholderColor3=C.TXT_C,PlaceholderText="#RRGGBB",
+                TextSize=12,Font=F.MONO,ClearTextOnFocus=false,TextXAlignment=Enum.TextXAlignment.Center,
+            },panel); corner(hx,5); local hbs=stroke(hx,C.BORDER,1,0.5)
+
+            local function toHex(c3)
+                return string.format("#%02X%02X%02X",
+                    math.floor(c3.R*255+.5),math.floor(c3.G*255+.5),math.floor(c3.B*255+.5))
+            end
+            local function updAll()
+                local col=Color3.fromHSV(h,s,v); color=col
+                sw.BackgroundColor3=col; svB.BackgroundColor3=Color3.fromHSV(h,1,1)
+                svK.Position=UDim2.new(s,0,1-v,0); hK.Position=UDim2.new(0.5,0,h,0)
+                hx.Text=toHex(col)
+                if flag then flags[flag]={R=col.R,G=col.G,B=col.B} end
+                if cfg.Callback then pcall(cfg.Callback,col) end
+            end
+
+            local svD=false
+            local sI=make("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",ZIndex=4},svB)
+            sI.MouseButton1Down:Connect(function() svD=true end)
+            UserInputService.InputEnded:Connect(function(i)
+                if i.UserInputType==Enum.UserInputType.MouseButton1 then svD=false end
+            end)
+            RunService.Heartbeat:Connect(function()
+                if not svD then return end
+                local m=UserInputService:GetMouseLocation()
+                local a=svB.AbsolutePosition; local sz=svB.AbsoluteSize
+                s=math.clamp((m.X-a.X)/sz.X,0,1); v=1-math.clamp((m.Y-a.Y)/sz.Y,0,1); updAll()
+            end)
+            local hD=false
+            local hI=make("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",ZIndex=4},hB)
+            hI.MouseButton1Down:Connect(function() hD=true end)
+            UserInputService.InputEnded:Connect(function(i)
+                if i.UserInputType==Enum.UserInputType.MouseButton1 then hD=false end
+            end)
+            RunService.Heartbeat:Connect(function()
+                if not hD then return end
+                local m=UserInputService:GetMouseLocation()
+                local a=hB.AbsolutePosition; local sz=hB.AbsoluteSize
+                h=math.clamp((m.Y-a.Y)/sz.Y,0,1); updAll()
+            end)
+            hx.Focused:Connect(function()  tw(hbs,FAST,{Color=C.BORDER_FOC,Transparency=0}) end)
+            hx.FocusLost:Connect(function()
+                tw(hbs,FAST,{Color=C.BORDER,Transparency=0.5})
+                local t2=hx.Text:gsub("#","")
+                if #t2==6 then
+                    local r2=tonumber(t2:sub(1,2),16)
+                    local g2=tonumber(t2:sub(3,4),16)
+                    local b2=tonumber(t2:sub(5,6),16)
+                    if r2 and g2 and b2 then h,s,v=Color3.fromRGB(r2,g2,b2):ToHSV(); updAll() end
+                end
+            end)
+            row.MouseButton1Click:Connect(function()
+                isOpen=not isOpen; panel.Visible=isOpen
+                local chv=row:FindFirstChild("TextLabel",true)
+                if chv and chv.Text~=cfg.Name and chv.Text~="" then chv.Text=isOpen and "▴" or "▾" end
+                if isOpen then
+                    updAll()
+                    tw(rs,FAST,{Color=C.BORDER_FOC,Transparency=0})
+                    tw(row,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.2})
+                else
+                    tw(rs,FAST,{Color=C.BORDER,Transparency=0.5})
+                    tw(row,FAST,{BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF})
+                end
+            end)
+            row.MouseEnter:Connect(function() tw(row,FAST,{BackgroundColor3=C.HOV,BackgroundTransparency=0.2}) end)
+            row.MouseLeave:Connect(function()
+                if not isOpen then tw(row,FAST,{BackgroundColor3=C.DARK,BackgroundTransparency=T.SURF}) end
+            end)
+            updAll()
+            local CP={}
+            function CP:Set(c3,silent)
+                color=c3; h,s,v=c3:ToHSV(); updAll()
+                if not silent and cfg.Callback then pcall(cfg.Callback,c3) end
+            end
+            function CP:Get() return color end
+            return CP
+        end
+
+        return Tab
+    end
+
+    -- ── Window helpers ─────────────────────────────────────────
+    function Window:GetFlag(flag)    return flags[flag] end
+    function Window:SetToggle(flag,value)
+        local setter=toggleSetters[flag]; if setter then setter(value,false) end
+    end
+    function Window:LoadConfiguration()
+        local saved=loadConfig()
+        for flag,val in pairs(saved) do
+            local setter=toggleSetters[flag]
+            if setter and type(val)=="boolean" then setter(val,true) end
+        end
+    end
+
+    return Window
+end
+
+return DevNgg
